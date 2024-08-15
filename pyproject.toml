@@ -1,3 +1,17 @@
+[project]
+dependencies = [
+  'numpy',
+  'scipy',
+  'rich',
+]
+
+[project.optional-dependencies]
+tests = [
+  'pytest',
+  'pytest-cov',
+  'pre-commit'
+]
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 xfail_strict = true
