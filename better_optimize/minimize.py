@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import OptimizeResult
 from scipy.optimize import minimize as sp_minimize
 
-from better_optimize.utilities import validate_provided_functions, determine_maxiter
+from better_optimize.utilities import validate_provided_functions, determine_maxiter, determine_tolerance, check_f_is_fused
 from better_optimize.wrapper import CostFuncWrapper, optimzer_early_stopping_wrapper
 from better_optimize.constants import minimize_method
 
@@ -11,13 +11,14 @@ from functools import partial
 
 
 def minimize(
-    method: minimize_method,
-    f: Callable[[np.ndarray], float],
+    f: Callable[..., float | tuple[float, np.ndarray]],
     x0: np.ndarray,
-    f_grad: Callable[[np.ndarray], np.ndarray] | None = None,
-    f_hess: Callable[[np.ndarray], np.ndarray] | None = None,
-    f_hessp: Callable[[np.ndarray], np.ndarray] | None = None,
+    method: minimize_method,
+    jac: Callable[..., np.ndarray] | None = None,
+    hess: Callable[..., np.ndarray] | None = None,
+    hessp: Callable[..., np.ndarray] | None = None,
     progressbar: bool = True,
+    verbose: bool=  True,
     args: tuple | None = None,
     **optimizer_kwargs,
 ) -> OptimizeResult:
@@ -33,17 +34,19 @@ def minimize(
     args: tuple, optional
         Additional arguments to pass to the objective function. Additional arguments are also passed to the gradient
         and Hessian functions, if provided
-    f_grad: Callable, optional
+    jac: Callable, optional
         The gradient of the objective function
-    f_hess: Callable, optional
+    hess: Callable, optional
         The Hessian of the objective function
-    f_hessp: Callable, optional
+    hessp: Callable, optional
         The Hessian-vector product of the objective function
     method: str
         The optimization method to use
     progressbar: bool
         Whether to display a progress bar
-    optimizer_kwargs: dict
+    verbose: bool
+        Whether to display verbose output
+    optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
     Returns
@@ -52,30 +55,34 @@ def minimize(
         Optimization result
 
     """
-    validate_provided_functions(method, f_grad, f_hess, f_hessp)
+    has_fused_f_and_grad = check_f_is_fused(f, x0, args)
+    validate_provided_functions(method, jac, hess, hessp ,has_fused_f_and_grad, verbose=verbose)
+    print(has_fused_f_and_grad)
 
     options = optimizer_kwargs.pop("options", {})
     optimizer_kwargs['options'] = options
 
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs)
+    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
+    optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
     objective = CostFuncWrapper(
         maxeval=maxiter,
         f=f,
-        f_jac=f_grad,
-        f_hess=f_hess,
+        jac=jac,
+        hess=hess,
+        args=args,
         progressbar=progressbar,
+        has_fused_f_and_grad=has_fused_f_and_grad,
     )
 
     f_optim = partial(
         sp_minimize,
         fun=objective,
         x0=x0,
-        args=args,
         method=method,
-        jac=f_grad is not None or None,
-        hess=f_hess,
-        hessp=f_hessp,
+        jac=True if has_fused_f_and_grad or jac is not None else None,
+        hess=hess,
+        hessp=hessp,
         callback=objective.callback,
         **optimizer_kwargs,
     )

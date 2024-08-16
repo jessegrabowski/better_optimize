@@ -1,7 +1,7 @@
 import pytest
 
 from typing import get_args
-from better_optimize.utilities import validate_provided_functions, determine_maxiter
+from better_optimize.utilities import validate_provided_functions, determine_maxiter, determine_tolerance
 from better_optimize.constants import minimize_method, MODE_KWARGS
 from contextlib import contextmanager
 from itertools import product
@@ -32,7 +32,7 @@ def test_validate_provided_functions_raises_on_two_hess(settings, method: minimi
                    'except trust-exact and dogleg, use_hessp is preferred.')
         manager = no_op() if not (use_hess and use_hessp) else pytest.raises(ValueError, match=message)
         with manager:
-            validate_provided_functions(method, f_grad, f_hess, f_hessp, verbose=False)
+            validate_provided_functions(method, f_grad, f_hess, f_hessp, has_fused_f_and_grad=False, verbose=True)
 
 
 @pytest.mark.parametrize('method', methods, ids=methods)
@@ -46,7 +46,7 @@ def test_validate_provided_functions_raises_on_two_hess(caplog, settings, method
             # Skip this error case, it's caught in another test
             continue
 
-        validate_provided_functions(method, f_grad, f_hess, f_hessp, verbose=True)
+        validate_provided_functions(method, f_grad, f_hess, f_hessp, has_fused_f_and_grad=False, verbose=True)
 
         if use_grad and not uses_grad:
             message = f"Gradient provided but not used by method {method}."
@@ -66,7 +66,7 @@ def test_validate_provided_functions_raises_on_two_hess(caplog, settings, method
 
 @pytest.mark.parametrize('method', methods, ids=methods)
 def test_determine_maxiter(method: minimize_method):
-    optimizer_kwargs = {}
+    optimizer_kwargs = {'options': {}}
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
 
     assert maxiter == 5000
@@ -76,3 +76,19 @@ def test_determine_maxiter(method: minimize_method):
         assert optimizer_kwargs['options']['maxfun'] == 5000
     else:
         assert 'maxfun' not in optimizer_kwargs['options']
+
+
+@pytest.mark.parametrize('method', methods, ids=methods)
+def test_determine_tolerance(method: minimize_method):
+    optimizer_kwargs = {'options': {}, 'tol':1e-8}
+    optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
+    options = optimizer_kwargs['options']
+
+    if method in ['nelder-mead', 'powell', 'TNC']:
+        assert 'xtol' in options
+
+    if method in ['nelder-mead', 'powell', 'TNC', 'SLSQP']:
+        assert 'ftol' in options
+
+    if method in ['CG', 'BFGS', 'TNC', 'trust-krylov', 'trust-exact', 'trust-ncg', 'trust-constr']:
+        assert 'gtol' in options
