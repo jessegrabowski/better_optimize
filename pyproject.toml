@@ -1,6 +1,6 @@
 [project]
 name = 'better_optimize'
-dynamic = ["version"]
+version = '0.0.1'
 description = "A drop-in replacement for scipy optimize functions with quality of life improvements"
 readme = "README.md"
 license = {text = "MIT License"}
