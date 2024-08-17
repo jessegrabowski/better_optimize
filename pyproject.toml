@@ -1,6 +1,14 @@
+[build-system]
+requires = [
+    "setuptools",
+    "versioneer[toml]",
+]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = 'better_optimize'
 dynamic = ['version']
+requires-python = ">=3.10,<3.13"
 description = "A drop-in replacement for scipy optimize functions with quality of life improvements"
 readme = "README.md"
 license = {text = "MIT License"}
