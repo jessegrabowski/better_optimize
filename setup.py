@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 from setuptools.dist import Distribution
 
 import versioneer
@@ -15,4 +15,5 @@ if __name__ == "__main__":
         name=NAME,
         version=versioneer.get_version(),
         cmdclass=versioneer.get_cmdclass(),
+        packages=find_packages(exclude=["tests*"]),
     )
