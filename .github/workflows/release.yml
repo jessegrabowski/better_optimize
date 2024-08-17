@@ -26,6 +26,10 @@ jobs:
           # The GITHUB_REF should be something like "refs/tags/v1.2.3"
           # Make sure the package version is the same as the tag
 #          grep -Rq "^Version: ${GITHUB_REF:11}$" better_optimize.egg-info/PKG-INFO
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bdist
+          path: dist/*
   pypi-publish:
     needs: release-job
     name: upload release to PyPI
@@ -33,6 +37,10 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bdist
+          path: dist
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
   test-install-job:
