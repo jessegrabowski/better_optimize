@@ -1,8 +1,17 @@
 import logging
-from typing import Callable
+
+from collections.abc import Callable
+
 import numpy as np
-import sys
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn, SpinnerColumn
+
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Column
 
 _log = logging.getLogger(__name__)
@@ -101,19 +110,19 @@ class CostFuncWrapper:
 
         if isinstance(value, np.ndarray):
             value = (value**2).sum()
-        elif isinstance(value, (list, tuple)):
+        elif isinstance(value, list | tuple):
             value = sum([x**2 for x in value])
 
-        value_dict = {'f_value': value}
+        value_dict = {"f_value": value}
         if grad is not None:
             grad_norm = np.linalg.norm(grad)
-            value_dict['grad_norm'] = grad_norm
+            value_dict["grad_norm"] = grad_norm
         if hess is not None:
             hess_norm = np.linalg.norm(hess)
-            value_dict['hess_norm'] = hess_norm
+            value_dict["hess_norm"] = hess_norm
 
         if self.n_eval == 0:
-            self.task = self.progress.add_task('Optimizing', **value_dict)
+            self.task = self.progress.add_task("Optimizing", **value_dict)
 
         if not completed:
             self.progress.update(self.task, advance=self.update_every, **value_dict)
@@ -129,17 +138,30 @@ class CostFuncWrapper:
 
         stat_column = TextColumn(self.desc, table_column=Column(ratio=1))
 
-        return Progress(text_column, spinner, bar_column, time_column, m_of_n, stat_column, expand=False)
+        return Progress(
+            text_column, spinner, bar_column, time_column, m_of_n, stat_column, expand=False
+        )
 
 
 def optimzer_early_stopping_wrapper(f_optim):
     objective = f_optim.keywords["fun"]
     progressbar = objective.progressbar
 
-    res = f_optim()
+    try:
+        # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
+        # at this point.
+        res = f_optim()
+    except Exception as e:
+        # Teardown the progress bar if necessary, then forward the error
+        if progressbar:
+            objective.progress.stop()
+        raise e
+
     x_final = res.x
 
     if progressbar:
+        # Evaluate the objective function one last time to get the final value, gradient, and hessian
+        # and update the progress bar to show the true final state
         outputs = objective.step(x_final)
         if not objective.use_jac and not objective.use_hess:
             value = outputs

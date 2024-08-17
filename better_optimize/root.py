@@ -4,27 +4,25 @@ from functools import partial
 import numpy as np
 
 from scipy.optimize import OptimizeResult
-from scipy.optimize import minimize as sp_minimize
-from scipy.sparse.linalg import LinearOperator
+from scipy.optimize import root as sp_root
 
-from better_optimize.constants import minimize_method
+from better_optimize.constants import root_method
 from better_optimize.utilities import (
     check_f_is_fused,
     determine_maxiter,
     determine_tolerance,
+    kwargs_to_jac_options,
     kwargs_to_options,
-    validate_provided_functions_minimize,
+    validate_provided_functions_root,
 )
 from better_optimize.wrapper import CostFuncWrapper, optimzer_early_stopping_wrapper
 
 
-def minimize(
-    f: Callable[..., float | tuple[float, np.ndarray]],
+def root(
+    f: Callable[..., np.ndarray | tuple[np.ndarray, np.ndarray]],
     x0: np.ndarray,
-    method: minimize_method,
+    method: root_method,
     jac: Callable[..., np.ndarray] | None = None,
-    hess: Callable[..., np.ndarray | LinearOperator] | None = None,
-    hessp: Callable[..., np.ndarray] | None = None,
     progressbar: bool = True,
     verbose: bool = True,
     args: tuple | None = None,
@@ -64,41 +62,33 @@ def minimize(
 
     """
     has_fused_f_and_grad = check_f_is_fused(f, x0, args)
-    validate_provided_functions_minimize(
-        method, jac, hess, hessp, has_fused_f_and_grad, verbose=verbose
+    validate_provided_functions_root(
+        method, jac, has_fused_f_and_grad, has_fused_f_and_grad, verbose=verbose
     )
 
     options = optimizer_kwargs.pop("options", {})
     optimizer_kwargs["options"] = options
-
     optimizer_kwargs = kwargs_to_options(optimizer_kwargs, method)
+    optimizer_kwargs = kwargs_to_jac_options(optimizer_kwargs, method)
 
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
-
-    # Test hessian function -- if it returns a LinearOperator, it can't be used inside the wrapper
-    args = () if args is None else args
-    use_hess = hess is not None and not isinstance(hess(x0, *args), LinearOperator)
 
     objective = CostFuncWrapper(
         maxeval=maxiter,
         f=f,
         jac=jac,
-        hess=hess if use_hess else None,
         args=args,
         progressbar=progressbar,
         has_fused_f_and_grad=has_fused_f_and_grad,
     )
 
     f_optim = partial(
-        sp_minimize,
+        sp_root,
         fun=objective,
         x0=x0,
         method=method,
         jac=True if has_fused_f_and_grad or jac is not None else None,
-        hess=hess,
-        hessp=hessp,
-        callback=objective.callback,
         **optimizer_kwargs,
     )
 
