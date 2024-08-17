@@ -1,7 +1,6 @@
 import logging
 
-from _version import get_versions
-
+from better_optimize._version import get_versions
 from better_optimize.minimize import minimize
 from better_optimize.root import root
 
