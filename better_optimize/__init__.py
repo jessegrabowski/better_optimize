@@ -1,5 +1,7 @@
 import logging
 
+from _version import get_versions
+
 from better_optimize.minimize import minimize
 from better_optimize.root import root
 
@@ -12,5 +14,5 @@ if not logging.root.handlers:
         _log.addHandler(handler)
 
 
-__version__ = "0.0.1"
+__version__ = get_versions()["version"]
 __all__ = ["minimize", "root"]

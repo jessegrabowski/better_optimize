@@ -22,3 +22,4 @@ repos:
   hooks:
     - id: no-print-statements
       files: ^better_optimize/
+      exclude: ^better_optimize/_version\.py$
