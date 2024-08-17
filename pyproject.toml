@@ -1,6 +1,5 @@
 [project]
 name = 'better_optimize'
-version = '0.0.1'
 dynamic = ["version"]
 description = "A drop-in replacement for scipy optimize functions with quality of life improvements"
 readme = "README.md"
@@ -38,6 +37,9 @@ Issues = "https://github.com/jessegrabowski/better_optimize/issues"
 [tool.pytest.ini_options]
 minversion = "6.0"
 xfail_strict = true
+
+[tool.setuptools]
+py-modules = ['better_optimize']
 
 [tool.coverage.report]
 exclude_lines = [
