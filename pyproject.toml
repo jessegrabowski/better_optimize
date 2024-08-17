@@ -38,6 +38,9 @@ Issues = "https://github.com/jessegrabowski/better_optimize/issues"
 minversion = "6.0"
 xfail_strict = true
 
+[tool.setuptools]
+py-modules = ['better_optimize']
+
 [tool.coverage.report]
 exclude_lines = [
   "pragma: nocover",
