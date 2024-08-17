@@ -7,31 +7,14 @@ on:
 
 jobs:
   release-job:
+  pypi-publish:
+    name: upload release to PyPI
     runs-on: ubuntu-latest
-    env:
-      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+    permissions:
+      id-token: write
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.11
-    - name: Install release tooling
-      run: |
-        pip install twine wheel
-    - name: Build package
-      run: |
-        python setup.py sdist bdist_wheel
-    - name: Check version number match
-      run: |
-        echo "GITHUB_REF: ${GITHUB_REF}"
-        # The GITHUB_REF should be something like "refs/tags/v1.2.3"
-        # Make sure the package version is the same as the tag
-        grep -Rq "^Version: ${GITHUB_REF:11}$" better_optimize.egg-info/PKG-INFO
-    - name: Publish to PyPI
-      run: |
-        twine check dist/*
-        twine upload --repository pypi --username __token__ --password ${PYPI_TOKEN} dist/*
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
   test-install-job:
     needs: release-job
     runs-on: ubuntu-latest
