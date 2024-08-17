@@ -6,7 +6,6 @@ on:
       - created
 
 jobs:
-  release-job:
   pypi-publish:
     name: upload release to PyPI
     runs-on: ubuntu-latest
