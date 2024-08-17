@@ -1,0 +1,10 @@
+name: better_optimize
+channels:
+- conda-forge
+dependencies:
+  - numpy
+  - scipy
+  - rich
+  - pytest
+  - pytest-cov
+  - pre-commit
