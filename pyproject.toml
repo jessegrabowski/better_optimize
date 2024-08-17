@@ -1,4 +1,21 @@
 [project]
+name = 'better_optimize'
+version = '0.0.1'
+dynamic = ["version"]
+description = "A drop-in replacement for scipy optimize functions with quality of life improvements"
+readme = "README.md"
+license = {text = "MIT License"}
+classifiers =[
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Mathematics"
+]
+
 dependencies = [
   'numpy',
   'scipy',
@@ -11,6 +28,12 @@ tests = [
   'pytest-cov',
   'pre-commit'
 ]
+
+[project.urls]
+Homepage = "https://github.com/jessegrabowski/better_optimize"
+Repository = "https://github.com/jessegrabowski/better_optimize.git"
+Issues = "https://github.com/jessegrabowski/better_optimize/issues"
+
 
 [tool.pytest.ini_options]
 minversion = "6.0"
