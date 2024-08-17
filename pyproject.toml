@@ -57,9 +57,6 @@ xfail_strict = true
 [tool.setuptools]
 py-modules = ['better_optimize']
 
-[tool.setuptools.dynamic]
-version = {attr = "better_optimize.__version__"}
-
 [tool.coverage.report]
 exclude_lines = [
   "pragma: nocover",
