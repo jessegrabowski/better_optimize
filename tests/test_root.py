@@ -1,3 +1,4 @@
+from functools import partial
 from typing import get_args
 
 import numpy as np
@@ -11,16 +12,24 @@ from better_optimize.root import root
 all_methods = list(get_args(root_method))
 
 
-def func(x):
-    return x + 2 * np.cos(x)
+def func(x, a, b):
+    return a * x + b * np.cos(x)
 
 
-def func2(x):
-    f = [x[0] * np.cos(x[1]) - 4, x[1] * x[0] - x[1] - 5]
+def func2(x, a, b):
+    f = [a * x[0] * np.cos(x[1]) - 4, x[1] * x[0] - b * x[1] - 5]
 
-    df = np.array([[np.cos(x[1]), -x[0] * np.sin(x[1])], [x[1], x[0] - 1]])
+    return np.array(f)
 
-    return f, df
+
+def func2_jac(x, a, b):
+    df = np.array([[a * np.cos(x[1]), -a * x[0] * np.sin(x[1])], [x[1], x[0] - b]])
+
+    return df
+
+
+def func2_fused(x, a, b):
+    return func2(x, a, b), func2_jac(x, a, b)
 
 
 def func3(P, h, bounds):
@@ -49,15 +58,46 @@ def test_root(method: root_method):
     x0 = np.array([0.1])
     kwargs = {}
 
-    res = root(func, x0, method=method, **kwargs)
+    res = root(partial(func, a=1, b=2), x0, method=method, **kwargs)
+    assert_allclose(res.x, [-1.029866529322393])
+    assert_allclose(res.fun, [0.0], atol=1e-8, rtol=1e-8)
+
+
+@pytest.mark.parametrize("method", all_methods, ids=all_methods)
+def test_root_with_args(method: root_method):
+    if "mixing" in method:
+        pytest.skip("mixing methods fail even on this, just skipping")
+
+    x0 = np.array([0.1])
+    kwargs = {}
+
+    res = root(func, args=(1, 2), x0=x0, method=method, **kwargs)
     assert_allclose(res.x, [-1.029866529322393])
     assert_allclose(res.fun, [0.0], atol=1e-8, rtol=1e-8)
 
 
 @pytest.mark.parametrize("method", ["hybr", "lm"], ids=["hybr", "lm"])
+def test_root_with_jac(method: root_method):
+    x0 = np.array([0.8, 0.8])
+    res = root(partial(func2, a=1, b=1), x0, jac=partial(func2_jac, a=1, b=1), method=method)
+
+    assert_allclose(res.x, np.array([6.50409711, 0.90841421]))
+    assert_allclose(res.fun, [0.0, 0.0], atol=1e-8, rtol=1e-8)
+
+
+@pytest.mark.parametrize("method", ["hybr", "lm"], ids=["hybr", "lm"])
+def test_root_with_jac_and_args(method: root_method):
+    x0 = np.array([0.8, 0.8])
+    res = root(func2, x0, jac=func2_jac, args=(1, 1), method=method)
+
+    assert_allclose(res.x, np.array([6.50409711, 0.90841421]))
+    assert_allclose(res.fun, [0.0, 0.0], atol=1e-8, rtol=1e-8)
+
+
+@pytest.mark.parametrize("method", ["hybr", "lm"], ids=["hybr", "lm"])
 def test_root_fused_objective(method: root_method):
     x0 = np.array([0.8, 0.8])
-    res = root(func2, x0, method=method)
+    res = root(partial(func2_fused, a=1, b=1), x0, method=method)
     assert_allclose(res.x, np.array([6.50409711, 0.90841421]))
     assert_allclose(res.fun, [0.0, 0.0], atol=1e-8, rtol=1e-8)
 

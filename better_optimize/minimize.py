@@ -78,6 +78,7 @@ def minimize(
     # Test hessian function -- if it returns a LinearOperator, it can't be used inside the wrapper
     args = () if args is None else args
     use_hess = hess is not None and not isinstance(hess(x0, *args), LinearOperator)
+    use_hessp = hessp is not None
 
     objective = ObjectiveWrapper(
         maxeval=maxiter,
@@ -95,8 +96,8 @@ def minimize(
         x0=x0,
         method=method,
         jac=True if has_fused_f_and_grad or jac is not None else None,
-        hess=hess,
-        hessp=hessp,
+        hess=None if not use_hess else lambda x: hess(x, *args),
+        hessp=None if not use_hessp else lambda x, p: hessp(x, p, *args),
         callback=objective.callback,
         **optimizer_kwargs,
     )
