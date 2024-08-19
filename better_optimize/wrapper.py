@@ -17,7 +17,7 @@ from rich.table import Column
 _log = logging.getLogger(__name__)
 
 
-class CostFuncWrapper:
+class ObjectiveWrapper:
     def __init__(
         self,
         f: Callable[[np.ndarray | float, ...], float | np.ndarray | tuple[float, np.ndarray]],
@@ -78,11 +78,12 @@ class CostFuncWrapper:
 
         if self.n_eval % self.update_every == 0:
             self.update_progressbar(value, grad, hess)
-            self.n_eval += 1
 
         if self.n_eval > self.maxeval:
             self.update_progressbar(value, grad, hess)
             self.interrupted = True
+
+        self.n_eval += 1
 
         if self.use_hess:
             return value, grad, hess

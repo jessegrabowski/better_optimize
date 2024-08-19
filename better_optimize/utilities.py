@@ -122,7 +122,7 @@ def determine_maxiter(
     optimizer_kwargs: dict, method: minimize_method | root_method
 ) -> tuple[int, dict]:
     MAXITER_KWARGS = ["maxiter", "maxfun", "maxfev"]
-    maxiter = optimizer_kwargs.get("maxiter", 5000)
+    maxiter = optimizer_kwargs.pop("maxiter", 5000)
     optimizer_kwargs["options"].update({"maxiter": maxiter})
     maxiter_kwargs = [x for x in get_option_kwargs(method)["valid_options"] if x in MAXITER_KWARGS]
 
