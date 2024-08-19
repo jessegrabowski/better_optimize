@@ -65,9 +65,9 @@ def test_root_fused_objective(method: root_method):
 @pytest.mark.parametrize(
     "method, options",
     [
-        ("krylov", {"disp": True}),
-        ("broyden2", {"disp": True, "max_rank": 50}),
-        ("anderson", {"disp": True, "M": 10}),
+        ("krylov", {"disp": False}),
+        ("broyden2", {"disp": False, "max_rank": 50}),
+        ("anderson", {"disp": False, "M": 10}),
     ],
     ids=["krylov", "broyden2", "anderson"],
 )
@@ -78,6 +78,6 @@ def test_large_root(method: root_method, options: dict):
 
     # solve
     x0 = np.zeros(n, float)
-    res = root(func3, x0, args=(y, bounds), method=method, **options)
+    res = root(func3, x0, args=(y, bounds), method=method, maxiter=10000, **options)
 
     assert_allclose(res.fun, 0.0, atol=1e-5, rtol=1e-5)

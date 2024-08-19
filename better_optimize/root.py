@@ -15,7 +15,7 @@ from better_optimize.utilities import (
     kwargs_to_options,
     validate_provided_functions_root,
 )
-from better_optimize.wrapper import CostFuncWrapper, optimzer_early_stopping_wrapper
+from better_optimize.wrapper import ObjectiveWrapper, optimzer_early_stopping_wrapper
 
 
 def root(
@@ -74,7 +74,7 @@ def root(
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
-    objective = CostFuncWrapper(
+    objective = ObjectiveWrapper(
         maxeval=maxiter,
         f=f,
         jac=jac,

@@ -99,9 +99,7 @@ def test_rosen(method: minimize_method):
 def test_rosen_with_args(method: minimize_method):
     x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
 
-    res = minimize(
-        rosen_with_args, x0, method="nelder-mead", args=(0.5, 1.0), options={"xatol": 1e-8}
-    )
+    res = minimize(rosen_with_args, x0, method=method, args=(0.5, 1.0), tol=1e-20, maxiter=1000)
 
     assert isinstance(res, OptimizeResult)
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
@@ -131,7 +129,9 @@ def test_fused_rosen_with_args(method: minimize_method):
 def test_rosen_with_hess(method: minimize_method):
     x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
 
-    res = minimize(rosen, x0, method=method, jac=rosen_der, hess=rosen_hess, tol=1e-20)
+    res = minimize(
+        rosen, x0, method=method, jac=rosen_der, hess=rosen_hess, tol=1e-20, maxiter=10000
+    )
 
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
     assert_allclose(res.fun, 0.0, atol=1e-8, rtol=1e-8)

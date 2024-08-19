@@ -15,7 +15,7 @@ from better_optimize.utilities import (
     kwargs_to_options,
     validate_provided_functions_minimize,
 )
-from better_optimize.wrapper import CostFuncWrapper, optimzer_early_stopping_wrapper
+from better_optimize.wrapper import ObjectiveWrapper, optimzer_early_stopping_wrapper
 
 
 def minimize(
@@ -72,7 +72,6 @@ def minimize(
     optimizer_kwargs["options"] = options
 
     optimizer_kwargs = kwargs_to_options(optimizer_kwargs, method)
-
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
@@ -80,7 +79,7 @@ def minimize(
     args = () if args is None else args
     use_hess = hess is not None and not isinstance(hess(x0, *args), LinearOperator)
 
-    objective = CostFuncWrapper(
+    objective = ObjectiveWrapper(
         maxeval=maxiter,
         f=f,
         jac=jac,
