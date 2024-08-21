@@ -72,7 +72,7 @@ def minimize(
     optimizer_kwargs["options"] = options
 
     optimizer_kwargs = kwargs_to_options(optimizer_kwargs, method)
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
+    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, len(x0))
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
     # Test hessian function -- if it returns a LinearOperator, it can't be used inside the wrapper

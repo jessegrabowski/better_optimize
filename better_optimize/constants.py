@@ -37,6 +37,7 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": False,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": [
             "disp",
             "maxiter",
@@ -53,12 +54,14 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": False,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 1000 * n,
         "valid_options": ["disp", "xtol", "ftol", "maxiter", "maxfev", "direc", "return_all"],
     },
     "CG": {
         "uses_grad": True,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": [
             "disp",
             "maxiter",
@@ -75,6 +78,7 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": True,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": [
             "disp",
             "maxiter",
@@ -93,12 +97,14 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": True,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": ["disp", "xtol", "maxiter", "eps", "return_all", "c1", "c2"],
     },
     "L-BFGS-B": {
         "uses_grad": True,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": [
             "disp",
             "maxcor",
@@ -116,6 +122,7 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": True,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: max(100, 10 * n),
         "valid_options": [
             "eps",
             "scale",
@@ -138,12 +145,14 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": False,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 1000,
         "valid_options": ["rhobeg", "tol", "disp", "maxiter", "catol"],
     },
     "SLSQP": {
         "uses_grad": True,
         "uses_hess": False,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 100,
         "valid_options": [
             "ftol",
             "eps",
@@ -156,6 +165,7 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": True,
+        "f_maxiter_default": lambda n: 1000,
         "valid_options": [
             "gtol",
             "xtol",
@@ -176,52 +186,47 @@ MINIMIZE_MODE_KWARGS = {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol"],
     },
     "trust-ncg": {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": True,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol"],
     },
     "trust-exact": {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": False,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol"],
     },
     "trust-krylov": {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": True,
+        "f_maxiter_default": lambda n: 200 * n,
         "valid_options": ["inexact"],
     },
 }
 
-root_method = Literal[
-    "hybr",
-    "lm",
-    "broyden1",
-    "broyden2",
-    "anderson",
-    "linearmixing",
-    "diagbroyden",
-    "excitingmixing",
-    "krylov",
-    "df-sane",
-]
 
 ROOT_MODE_KWARGS = {
     "hybr": {
         "uses_jac": True,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": ["col_deriv", "xtol", "maxfev", "band", "eps", "factor", "diag"],
     },
     "lm": {
         "uses_jac": True,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": ["col_deriv", "ftol", "xtol", "gtol", "maxiter", "eps", "factor", "diag"],
     },
     "broyden1": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -239,6 +244,7 @@ ROOT_MODE_KWARGS = {
     },
     "broyden2": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -256,6 +262,7 @@ ROOT_MODE_KWARGS = {
     },
     "anderson": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -272,6 +279,7 @@ ROOT_MODE_KWARGS = {
     },
     "linearmixing": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -288,6 +296,7 @@ ROOT_MODE_KWARGS = {
     },
     "diagbroyden": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -304,6 +313,7 @@ ROOT_MODE_KWARGS = {
     },
     "excitingmixing": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -320,6 +330,7 @@ ROOT_MODE_KWARGS = {
     },
     "krylov": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "nit",
             "disp",
@@ -343,6 +354,7 @@ ROOT_MODE_KWARGS = {
     },
     "df-sane": {
         "uses_jac": False,
+        "f_maxiter_default": lambda n: 100 * (n + 1),
         "valid_options": [
             "ftol",
             "fatol",

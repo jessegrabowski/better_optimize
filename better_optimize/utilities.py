@@ -119,12 +119,19 @@ def check_f_is_fused(f, x0, args):
 
 
 def determine_maxiter(
-    optimizer_kwargs: dict, method: minimize_method | root_method
+    optimizer_kwargs: dict, method: minimize_method | root_method, n_vars
 ) -> tuple[int, dict]:
     MAXITER_KWARGS = ["maxiter", "maxfun", "maxfev"]
-    maxiter = optimizer_kwargs.pop("maxiter", 5000)
-    optimizer_kwargs["options"].update({"maxiter": maxiter})
-    maxiter_kwargs = [x for x in get_option_kwargs(method)["valid_options"] if x in MAXITER_KWARGS]
+    method_info = get_option_kwargs(method)
+    maxiter_kwargs = [x for x in method_info["valid_options"] if x in MAXITER_KWARGS]
+    maxiter_possibilities = [
+        optimizer_kwargs.pop("maxiter", None),
+        *(optimizer_kwargs["options"].get(kwarg) for kwarg in maxiter_kwargs),
+    ]
+    if any(maxiter_possibilities):
+        maxiter = max([x for x in maxiter_possibilities if x is not None])
+    else:
+        maxiter = method_info["f_maxiter_default"](n_vars)
 
     for kwarg in maxiter_kwargs:
         if kwarg not in optimizer_kwargs["options"]:

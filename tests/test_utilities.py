@@ -12,6 +12,7 @@ from better_optimize.constants import MINIMIZE_MODE_KWARGS, TOLERANCES, minimize
 from better_optimize.utilities import (
     determine_maxiter,
     determine_tolerance,
+    get_option_kwargs,
     kwargs_to_jac_options,
     kwargs_to_options,
     validate_provided_functions_minimize,
@@ -88,16 +89,22 @@ def test_validate_provided_functions_warnings(caplog, settings, method: minimize
 
 @pytest.mark.parametrize("method", methods, ids=methods)
 def test_determine_maxiter(method: minimize_method):
+    all_maxiter_kwargs = ["maxiter", "maxfun", "maxfev"]
+    method_info = get_option_kwargs(method)
+    maxiter_kwargs = [x for x in method_info["valid_options"] if x in all_maxiter_kwargs]
+
     optimizer_kwargs = {"options": {}}
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
+    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, n_vars=100)
 
-    assert maxiter == 5000
-    assert optimizer_kwargs["options"]["maxiter"] == 5000
+    expected_maxiter = method_info["f_maxiter_default"](100)
+    assert maxiter == expected_maxiter
 
-    if method in ["L-BFGS-B", "TNC"]:
-        assert optimizer_kwargs["options"]["maxfun"] == 5000
-    else:
-        assert "maxfun" not in optimizer_kwargs["options"]
+    for kwarg in maxiter_kwargs:
+        assert optimizer_kwargs["options"][kwarg] == expected_maxiter
+
+    for kwarg in all_maxiter_kwargs:
+        if kwarg not in maxiter_kwargs:
+            assert kwarg not in optimizer_kwargs["options"]
 
 
 @pytest.mark.parametrize("method", methods, ids=methods)
