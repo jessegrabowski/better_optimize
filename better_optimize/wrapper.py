@@ -28,6 +28,7 @@ class ObjectiveWrapper:
         maxeval: int = 5000,
         progressbar: bool = True,
         update_every: int = 10,
+        root=False,
     ):
         self.n_eval = 0
         self.maxeval = maxeval
@@ -36,6 +37,7 @@ class ObjectiveWrapper:
         self.use_jac = False
         self.use_hess = False
         self.has_fused_f_and_grad = has_fused_f_and_grad
+        self.root = root
 
         self.progress = None
         self.task = None
@@ -45,7 +47,8 @@ class ObjectiveWrapper:
         self.desc = "f = {task.fields[f_value]:,.5g}"
 
         if jac is not None or has_fused_f_and_grad:
-            self.desc += ", ||grad|| = {task.fields[grad_norm]:,.5g}"
+            name = "grad" if not root else "jac"
+            self.desc += f", ||{name}||" + "= {task.fields[grad_norm]:,.5g}"
             self.use_jac = True
             self.f_jac = lambda x: jac(x, *self.args)
 
@@ -123,9 +126,8 @@ class ObjectiveWrapper:
             value_dict["hess_norm"] = hess_norm
 
         if self.n_eval == 0:
-            self.task = self.progress.add_task(
-                "Optimizing", total=self.maxeval, refresh=True, **value_dict
-            )
+            verb = "Minimizing" if not self.root else "Finding Roots"
+            self.task = self.progress.add_task(verb, total=self.maxeval, refresh=True, **value_dict)
 
         if not completed:
             self.progress.update(self.task, advance=self.update_every, **value_dict)
