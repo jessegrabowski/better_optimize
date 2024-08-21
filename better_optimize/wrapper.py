@@ -123,12 +123,17 @@ class ObjectiveWrapper:
             value_dict["hess_norm"] = hess_norm
 
         if self.n_eval == 0:
-            self.task = self.progress.add_task("Optimizing", **value_dict)
+            self.task = self.progress.add_task(
+                "Optimizing", total=self.maxeval, refresh=True, **value_dict
+            )
 
         if not completed:
             self.progress.update(self.task, advance=self.update_every, **value_dict)
         else:
-            self.progress.update(self.task, total=self.n_eval, completed=self.n_eval, **value_dict)
+            self.progress.update(
+                self.task, total=self.n_eval, completed=self.n_eval, refresh=True, **value_dict
+            )
+            self.progress.stop()
 
     def initialize_progress_bar(self):
         text_column = TextColumn("{task.description}", table_column=Column(ratio=1))

@@ -71,7 +71,7 @@ def root(
     optimizer_kwargs = kwargs_to_options(optimizer_kwargs, method)
     optimizer_kwargs = kwargs_to_jac_options(optimizer_kwargs, method)
 
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method)
+    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, len(x0))
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
     objective = ObjectiveWrapper(

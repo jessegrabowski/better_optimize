@@ -84,7 +84,7 @@ def rosen_fused(x, a, b):
 def test_rosen(method: minimize_method):
     x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
 
-    res = minimize(partial(rosen, a=100, b=0), x0, method=method, tol=1e-8)
+    res = minimize(partial(rosen, a=100, b=0), x0, method=method, tol=1e-8, maxiter=5000)
 
     assert isinstance(res, OptimizeResult)
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
@@ -95,7 +95,7 @@ def test_rosen(method: minimize_method):
 def test_rosen_with_args(method: minimize_method):
     x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
 
-    res = minimize(rosen, x0, method=method, args=(0.5, 1.0), tol=1e-20, maxiter=1000)
+    res = minimize(rosen, x0, method=method, args=(0.5, 1.0), tol=1e-20, maxiter=5000)
 
     assert isinstance(res, OptimizeResult)
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
