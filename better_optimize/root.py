@@ -81,6 +81,7 @@ def root(
         args=args,
         progressbar=progressbar,
         has_fused_f_and_grad=has_fused_f_and_grad,
+        root=True,
     )
 
     f_optim = partial(

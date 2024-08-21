@@ -88,6 +88,7 @@ def minimize(
         args=args,
         progressbar=progressbar,
         has_fused_f_and_grad=has_fused_f_and_grad,
+        root=False,
     )
 
     f_optim = partial(
