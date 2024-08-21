@@ -56,7 +56,7 @@ def test_validate_provided_functions_raises_on_two_hess(settings, method: minimi
 
 @pytest.mark.parametrize("method", methods, ids=methods)
 def test_validate_provided_functions_warnings(caplog, settings, method: minimize_method):
-    uses_grad, uses_hess, uses_hessp, _ = MINIMIZE_MODE_KWARGS[method].values()
+    uses_grad, uses_hess, uses_hessp, *_ = MINIMIZE_MODE_KWARGS[method].values()
 
     for f_grad, f_hess, f_hessp in settings:
         use_grad, use_hess, use_hessp = map(func_not_none, (f_grad, f_hess, f_hessp))

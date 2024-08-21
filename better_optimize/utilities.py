@@ -36,7 +36,7 @@ def validate_provided_functions_minimize(
     verbose=True,
 ) -> None:
     has_grad, has_hess, has_hessp = map(lambda f: f is not None, [f_grad, f_hess, f_hessp])
-    uses_grad, uses_hess, uses_hessp, _ = MINIMIZE_MODE_KWARGS[method].values()
+    uses_grad, uses_hess, uses_hessp, *_ = MINIMIZE_MODE_KWARGS[method].values()
 
     if has_fused_f_and_grad and has_grad:
         _log.warning(
