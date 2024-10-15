@@ -1,6 +1,7 @@
 import logging
 
 from collections.abc import Callable
+from warnings import catch_warnings
 
 import numpy as np
 
@@ -158,8 +159,9 @@ class ObjectiveWrapper:
 
 def optimzer_early_stopping_wrapper(f_optim):
     objective = f_optim.keywords["fun"]
+    interrupted = False
 
-    with objective.progress:
+    with objective.progress, catch_warnings(category=RuntimeWarning, action="ignore"):
         try:
             # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
             # at this point.
@@ -167,19 +169,23 @@ def optimzer_early_stopping_wrapper(f_optim):
             final_value = res.x
         except (KeyboardInterrupt, StopIteration):
             # Teardown the progress bar if necessary, then forward the error
+            interrupted = True
             final_value, res = objective.previous_x, None
+        except Exception as e:
+            raise e
         finally:
-            outputs = objective.step(final_value)
-            if not objective.use_jac and not objective.use_hess:
-                value = outputs
-                grad = None
-                hess = None
-            elif objective.use_jac and not objective.use_hess:
-                value, grad = outputs
-                hess = None
-            else:
-                value, grad, hess = outputs
+            if interrupted:
+                outputs = objective.step(final_value)
+                if not objective.use_jac and not objective.use_hess:
+                    value = outputs
+                    grad = None
+                    hess = None
+                elif objective.use_jac and not objective.use_hess:
+                    value, grad = outputs
+                    hess = None
+                else:
+                    value, grad, hess = outputs
 
-            objective.update_progressbar(value, grad, hess, completed=True)
+                objective.update_progressbar(value, grad, hess, completed=True)
 
     return res
