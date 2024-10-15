@@ -7,12 +7,13 @@ import numpy as np
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
-    Progress,
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
 )
 from rich.table import Column
+
+from better_optimize.utilities import ToggleableProgress
 
 _log = logging.getLogger(__name__)
 
@@ -59,9 +60,7 @@ class ObjectiveWrapper:
 
         self.previous_x = None
         self.progressbar = progressbar
-        if progressbar:
-            self.progress = self.initialize_progress_bar()
-            self.progress.start()
+        self.progress = self.initialize_progress_bar()
 
     def step(self, x):
         grad = None
@@ -135,7 +134,6 @@ class ObjectiveWrapper:
             self.progress.update(
                 self.task, total=self.n_eval, completed=self.n_eval, refresh=True, **value_dict
             )
-            self.progress.stop()
 
     def initialize_progress_bar(self):
         text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
@@ -146,42 +144,42 @@ class ObjectiveWrapper:
 
         stat_column = TextColumn(self.desc, table_column=Column(ratio=1))
 
-        return Progress(
-            text_column, spinner, bar_column, time_column, m_of_n, stat_column, expand=False
+        return ToggleableProgress(
+            text_column,
+            spinner,
+            bar_column,
+            time_column,
+            m_of_n,
+            stat_column,
+            expand=False,
+            disable=not self.progressbar,
         )
 
 
 def optimzer_early_stopping_wrapper(f_optim):
     objective = f_optim.keywords["fun"]
-    progressbar = objective.progressbar
 
-    try:
-        # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
-        # at this point.
-        res = f_optim()
-    except Exception as e:
-        # Teardown the progress bar if necessary, then forward the error
-        if progressbar:
-            objective.progress.stop()
-        raise e
+    with objective.progress:
+        try:
+            # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
+            # at this point.
+            res = f_optim()
+            final_value = res.x
+        except (KeyboardInterrupt, StopIteration):
+            # Teardown the progress bar if necessary, then forward the error
+            final_value, res = objective.previous_x, None
+        finally:
+            outputs = objective.step(final_value)
+            if not objective.use_jac and not objective.use_hess:
+                value = outputs
+                grad = None
+                hess = None
+            elif objective.use_jac and not objective.use_hess:
+                value, grad = outputs
+                hess = None
+            else:
+                value, grad, hess = outputs
 
-    x_final = res.x
-
-    if progressbar:
-        # Evaluate the objective function one last time to get the final value, gradient, and hessian
-        # and update the progress bar to show the true final state
-        outputs = objective.step(x_final)
-        if not objective.use_jac and not objective.use_hess:
-            value = outputs
-            grad = None
-            hess = None
-        elif objective.use_jac and not objective.use_hess:
-            value, grad = outputs
-            hess = None
-        else:
-            value, grad, hess = outputs
-
-        objective.update_progressbar(value, grad, hess, completed=True)
-        objective.progress.stop()
+            objective.update_progressbar(value, grad, hess, completed=True)
 
     return res

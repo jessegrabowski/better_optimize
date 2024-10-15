@@ -5,6 +5,8 @@ from copy import deepcopy
 
 import numpy as np
 
+from rich.progress import Progress
+
 from better_optimize.constants import (
     MINIMIZE_MODE_KWARGS,
     ROOT_MODE_KWARGS,
@@ -14,6 +16,67 @@ from better_optimize.constants import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+class ToggleableProgress(Progress):
+    """
+    Copied from PyMC: https://github.com/pymc-devs/pymc/blob/5352798ee0d36ed566e651466e54634b1b9a06c8/pymc/util.py#L545
+    A child of Progress that allows to disable progress bars and its container.
+
+    The implementation simply checks an `is_enabled` flag and generates the progress bar only if
+    it's `True`.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.is_enabled = kwargs.get("disable", None) is not True
+        if self.is_enabled:
+            super().__init__(*args, **kwargs)
+
+    def __enter__(self):
+        """Enter the context manager."""
+        if self.is_enabled:
+            self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager."""
+        if self.is_enabled:
+            super().__exit__(exc_type, exc_val, exc_tb)
+
+    def add_task(self, *args, **kwargs):
+        if self.is_enabled:
+            return super().add_task(*args, **kwargs)
+        return None
+
+    def advance(self, task_id, advance=1) -> None:
+        if self.is_enabled:
+            super().advance(task_id, advance)
+        return None
+
+    def update(
+        self,
+        task_id,
+        *,
+        total=None,
+        completed=None,
+        advance=None,
+        description=None,
+        visible=None,
+        refresh=False,
+        **fields,
+    ):
+        if self.is_enabled:
+            super().update(
+                task_id,
+                total=total,
+                completed=completed,
+                advance=advance,
+                description=description,
+                visible=visible,
+                refresh=refresh,
+                **fields,
+            )
+        return None
 
 
 def get_option_kwargs(method: minimize_method | root_method):
