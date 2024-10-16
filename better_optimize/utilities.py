@@ -135,7 +135,7 @@ def validate_provided_functions_minimize(
             f"be computationally intensive."
         )
 
-    if has_hess and not has_hessp and uses_hessp and uses_hess:
+    if has_hess and not has_hessp and uses_hessp and uses_hess and verbose:
         _log.warning(
             f"You provided a function to compute the full hessian, but method {method} allows the use of a "
             f"hessian-vector product instead. Consider passing hessp instead -- this may be significantly "
@@ -150,7 +150,7 @@ def validate_provided_functions_root(
     info_dict = get_option_kwargs(method)
     uses_jac = info_dict["uses_jac"]
 
-    if has_fused_f_and_grad and has_jac:
+    if has_fused_f_and_grad and has_jac and verbose:
         _log.warning(
             "Objective function returns a tuple (interpreted as (loss, gradient), but a gradient function was "
             "also provided. The gradient function will be ignored."
