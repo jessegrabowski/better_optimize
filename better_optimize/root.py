@@ -24,7 +24,7 @@ def root(
     method: root_method,
     jac: Callable[..., np.ndarray] | None = None,
     progressbar: bool = True,
-    verbose: bool = True,
+    verbose: bool = False,
     args: tuple | None = None,
     **optimizer_kwargs,
 ) -> OptimizeResult:
@@ -51,7 +51,7 @@ def root(
     progressbar: bool
         Whether to display a progress bar
     verbose: bool
-        Whether to display verbose output
+        If True, extra warnings about the provided configuration are printed
     optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
