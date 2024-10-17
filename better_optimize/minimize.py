@@ -26,7 +26,7 @@ def minimize(
     hess: Callable[..., np.ndarray | LinearOperator] | None = None,
     hessp: Callable[..., np.ndarray] | None = None,
     progressbar: bool = True,
-    verbose: bool = True,
+    verbose: bool = False,
     args: tuple | None = None,
     **optimizer_kwargs,
 ) -> OptimizeResult:
@@ -53,7 +53,8 @@ def minimize(
     progressbar: bool
         Whether to display a progress bar
     verbose: bool
-        Whether to display verbose output
+        If True, warnings about the provided configuration are displayed. These warnings are intended to help users
+        understand potential configuration issues that may affect the optimization process, but can be safely ignored.
     optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
