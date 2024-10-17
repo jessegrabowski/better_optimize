@@ -51,7 +51,8 @@ def root(
     progressbar: bool
         Whether to display a progress bar
     verbose: bool
-        If True, extra warnings about the provided configuration are printed
+        If True, warnings about the provided configuration are displayed. These warnings are intended to help users
+        understand potential configuration issues that may affect the optimization process, but can be safely ignored.
     optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
