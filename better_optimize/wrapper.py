@@ -1,7 +1,7 @@
 import logging
 
 from collections.abc import Callable
-from warnings import catch_warnings
+from warnings import catch_warnings, simplefilter
 
 import numpy as np
 
@@ -161,7 +161,8 @@ def optimzer_early_stopping_wrapper(f_optim):
     objective = f_optim.keywords["fun"]
     interrupted = False
 
-    with objective.progress, catch_warnings(category=RuntimeWarning, action="ignore"):
+    with objective.progress, catch_warnings():
+        simplefilter("ignore", category=RuntimeWarning)
         try:
             # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
             # at this point.
