@@ -15,7 +15,7 @@ from better_optimize.utilities import (
     kwargs_to_options,
     validate_provided_functions_minimize,
 )
-from better_optimize.wrapper import ObjectiveWrapper, optimzer_early_stopping_wrapper
+from better_optimize.wrapper import ObjectiveWrapper, optimizer_early_stopping_wrapper
 
 
 def minimize(
@@ -26,6 +26,7 @@ def minimize(
     hess: Callable[..., np.ndarray | LinearOperator] | None = None,
     hessp: Callable[..., np.ndarray] | None = None,
     progressbar: bool = True,
+    progressbar_update_interval: int = 1,
     verbose: bool = False,
     args: tuple | None = None,
     **optimizer_kwargs,
@@ -52,6 +53,8 @@ def minimize(
         The optimization method to use
     progressbar: bool
         Whether to display a progress bar
+    progressbar_update_interval: int
+        The interval at which the progress bar is updated. If progressbar is False, this parameter is ignored.
     verbose: bool
         If True, warnings about the provided configuration are displayed. These warnings are intended to help users
         understand potential configuration issues that may affect the optimization process, but can be safely ignored.
@@ -88,6 +91,7 @@ def minimize(
         hess=hess if use_hess else None,
         args=args,
         progressbar=progressbar,
+        progressbar_update_interval=progressbar_update_interval,
         has_fused_f_and_grad=has_fused_f_and_grad,
         root=False,
     )
@@ -104,5 +108,5 @@ def minimize(
         **optimizer_kwargs,
     )
 
-    optimizer_result = optimzer_early_stopping_wrapper(f_optim)
+    optimizer_result = optimizer_early_stopping_wrapper(f_optim)
     return optimizer_result
