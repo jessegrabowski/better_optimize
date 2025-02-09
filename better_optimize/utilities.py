@@ -1,11 +1,13 @@
 import logging
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 
 import numpy as np
 
-from rich.progress import Progress
+from rich.box import SIMPLE_HEAD
+from rich.progress import Progress, Task
+from rich.table import Column, Table
 
 from better_optimize.constants import (
     MINIMIZE_MODE_KWARGS,
@@ -77,6 +79,62 @@ class ToggleableProgress(Progress):
                 **fields,
             )
         return None
+
+    def make_tasks_table(self, tasks: Iterable[Task]) -> Table:
+        """Get a table to render the Progress display.
+
+        Unlike the parent method, this one returns a full table (not a grid), allowing for column headings.
+
+        Parameters
+        ----------
+        tasks: Iterable[Task]
+            An iterable of Task instances, one per row of the table.
+
+        Returns
+        -------
+        table: Table
+            A table instance.
+        """
+
+        def call_column(column, task):
+            # Subclass rich.BarColumn and add a callback method to dynamically update the display
+            if hasattr(column, "callbacks"):
+                column.callbacks(task)
+
+            return column(task)
+
+        table_columns = (
+            (
+                Column(no_wrap=True)
+                if isinstance(_column, str)
+                else _column.get_table_column().copy()
+            )
+            for _column in self.columns
+        )
+
+        table = Table(
+            *table_columns,
+            padding=(0, 1),
+            expand=self.expand,
+            show_header=True,
+            show_edge=True,
+            box=SIMPLE_HEAD,
+        )
+
+        for task in tasks:
+            if task.visible:
+                table.add_row(
+                    *(
+                        (
+                            column.format(task=task)
+                            if isinstance(column, str)
+                            else call_column(column, task)
+                        )
+                        for column in self.columns
+                    )
+                )
+
+        return table
 
 
 def get_option_kwargs(method: minimize_method | root_method):

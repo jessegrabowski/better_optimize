@@ -8,7 +8,6 @@ import numpy as np
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
-    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -29,7 +28,7 @@ class ObjectiveWrapper:
         args: tuple | None = None,
         maxeval: int = 5000,
         progressbar: bool = True,
-        update_every: int = 10,
+        progressbar_update_interval: int = 1,
         root=False,
     ):
         self.n_eval = 0
@@ -44,18 +43,14 @@ class ObjectiveWrapper:
         self.progress = None
         self.task = None
 
-        self.update_every = update_every
+        self.update_every = progressbar_update_interval
         self.interrupted = False
-        self.desc = "f = {task.fields[f_value]:,.5g}"
 
         if jac is not None or has_fused_f_and_grad:
-            name = "grad" if not root else "jac"
-            self.desc += f", ||{name}||" + "= {task.fields[grad_norm]:,.5g}"
             self.use_jac = True
             self.f_jac = lambda x: jac(x, *self.args)
 
         if hess is not None:
-            self.desc += ", ||hess|| = {task.fields[hess_norm]:,.5g}"
             self.use_hess = True
             self.f_hess = lambda x: hess(x, *self.args)
 
@@ -137,29 +132,40 @@ class ObjectiveWrapper:
             )
 
     def initialize_progress_bar(self):
-        text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
-        bar_column = BarColumn(bar_width=None, table_column=Column(ratio=2))
-        time_column = TimeElapsedColumn()
-        m_of_n = MofNCompleteColumn()
-        spinner = SpinnerColumn()
+        # text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
+        description = "Minimizing" if not self.root else "Finding Roots"
+        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=2))
+        time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
+        n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
 
-        stat_column = TextColumn(self.desc, table_column=Column(ratio=1))
+        objective_name = "Objective" if not self.root else "Residual"
+        obj_column = TextColumn(
+            "{task.fields[f_value]:0.8f}", table_column=Column(objective_name, ratio=1)
+        )
+
+        columns = [bar_column, time_column, n_iters, obj_column]
+
+        if self.use_jac:
+            grad_name = "||grad||" if not self.root else "||jac||"
+            columns += [
+                TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column(grad_name, ratio=1))
+            ]
+        if self.use_hess:
+            columns += [
+                TextColumn(
+                    "{task.fields[hess_norm]:0.8f}", table_column=Column("||hess||", ratio=1)
+                )
+            ]
 
         return ToggleableProgress(
-            text_column,
-            spinner,
-            bar_column,
-            time_column,
-            m_of_n,
-            stat_column,
+            *columns,
             expand=False,
             disable=not self.progressbar,
         )
 
 
-def optimzer_early_stopping_wrapper(f_optim):
+def optimizer_early_stopping_wrapper(f_optim):
     objective = f_optim.keywords["fun"]
-    interrupted = False
 
     with objective.progress, catch_warnings():
         simplefilter("ignore", category=RuntimeWarning)
@@ -170,23 +176,22 @@ def optimzer_early_stopping_wrapper(f_optim):
             final_value = res.x
         except (KeyboardInterrupt, StopIteration):
             # Teardown the progress bar if necessary, then forward the error
-            interrupted = True
             final_value, res = objective.previous_x, None
         except Exception as e:
             raise e
         finally:
-            if interrupted:
-                outputs = objective.step(final_value)
-                if not objective.use_jac and not objective.use_hess:
-                    value = outputs
-                    grad = None
-                    hess = None
-                elif objective.use_jac and not objective.use_hess:
-                    value, grad = outputs
-                    hess = None
-                else:
-                    value, grad, hess = outputs
+            outputs = objective.step(final_value)
 
-                objective.update_progressbar(value, grad, hess, completed=True)
+            if not objective.use_jac and not objective.use_hess:
+                value = outputs
+                grad = None
+                hess = None
+            elif objective.use_jac and not objective.use_hess:
+                value, grad = outputs
+                hess = None
+            else:
+                value, grad, hess = outputs
+
+            objective.update_progressbar(value, grad, hess, completed=True)
 
     return res
