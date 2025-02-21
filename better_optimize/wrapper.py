@@ -30,7 +30,6 @@ class ObjectiveWrapper:
         progressbar: bool = True,
         progressbar_update_interval: int = 1,
         root=False,
-        no_callback_allowed=False,
     ):
         self.n_eval = 0
         self.maxeval = maxeval
@@ -40,7 +39,6 @@ class ObjectiveWrapper:
         self.use_hess = False
         self.has_fused_f_and_grad = has_fused_f_and_grad
         self.root = root
-        self.no_callback_allowed = no_callback_allowed
 
         self.progress = None
         self.task = None
