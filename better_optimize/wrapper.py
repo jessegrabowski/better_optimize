@@ -5,6 +5,7 @@ from functools import partial
 
 import numpy as np
 
+from rich.console import Console
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -140,7 +141,7 @@ class ObjectiveWrapper:
     def initialize_progress_bar(self):
         # text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
         description = "Minimizing" if not self.root else "Finding Roots"
-        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=2))
+        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=1))
         time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
         n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
 
@@ -164,9 +165,7 @@ class ObjectiveWrapper:
             ]
 
         return ToggleableProgress(
-            *columns,
-            expand=False,
-            disable=not self.progressbar,
+            *columns, expand=False, disable=not self.progressbar, console=Console(width=100)
         )
 
 
