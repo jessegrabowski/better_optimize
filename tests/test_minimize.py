@@ -249,29 +249,3 @@ def test_constrained_rosen():
         tol=1e-20,
     )
     assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)
-
-    res = minimize(
-        partial(rosen, a=100, b=0),
-        x0,
-        method="trust-constr",
-        jac=partial(rosen_grad, a=100, b=0),
-        hess=partial(rosen_hess, a=100, b=0),
-        constraints=[linear_constraint, nonlinear_constraint],
-        options={"verbose": 1},
-        bounds=bounds,
-        tol=1e-20,
-    )
-    assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)
-
-    res = minimize(
-        partial(rosen, a=100, b=0),
-        x0,
-        method="trust-constr",
-        jac=partial(rosen_grad, a=100, b=0),
-        hess=partial(rosen_hess, a=100, b=0),
-        constraints=[linear_constraint, nonlinear_constraint],
-        options={"verbose": 1},
-        bounds=bounds,
-        tol=1e-20,
-    )
-    assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)

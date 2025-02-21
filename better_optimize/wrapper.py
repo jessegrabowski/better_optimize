@@ -1,10 +1,11 @@
 import logging
 
 from collections.abc import Callable
-from warnings import catch_warnings, simplefilter
+from functools import partial
 
 import numpy as np
 
+from rich.console import Console
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -91,6 +92,12 @@ class ObjectiveWrapper:
             return value
 
     def __call__(self, x):
+        if self.root and self.interrupted:
+            # Certain optimizers allow callbacks, which can be used to interrupt the optimization process gracefully.
+            # Others don't. For those that don't, we have to call the callback ourselves and give the user something
+            # back ourselves.
+            self.callback()
+
         try:
             return self.step(x)
         except (KeyboardInterrupt, StopIteration):
@@ -134,7 +141,7 @@ class ObjectiveWrapper:
     def initialize_progress_bar(self):
         # text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
         description = "Minimizing" if not self.root else "Finding Roots"
-        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=2))
+        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=1))
         time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
         n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
 
@@ -158,40 +165,42 @@ class ObjectiveWrapper:
             ]
 
         return ToggleableProgress(
-            *columns,
-            expand=False,
-            disable=not self.progressbar,
+            *columns, expand=False, disable=not self.progressbar, console=Console(width=100)
         )
 
 
-def optimizer_early_stopping_wrapper(f_optim):
+def optimizer_early_stopping_wrapper(f_optim: partial):
     objective = f_optim.keywords["fun"]
 
-    with objective.progress, catch_warnings():
-        simplefilter("ignore", category=RuntimeWarning)
+    with objective.progress:
         try:
-            # Do the optimization. This calls either optimize.root or optimize.minimize;  all arguments are pre-configured
-            # at this point.
+            # Do the optimization. This calls either optimize.root or optimize.minimize;
+            # all arguments are pre-configured at this point.
             res = f_optim()
             final_value = res.x
         except (KeyboardInterrupt, StopIteration):
             # Teardown the progress bar if necessary, then forward the error
-            final_value, res = objective.previous_x, None
+            final_value = objective.previous_x
+            res = {"x": final_value, "fun": objective.step(final_value)}
+            _log.warning(
+                "Execution interrupted and callback failed! Returning partial results as a dictionary "
+                "(not a scipy.optimize.OptimizeResult)."
+            )
         except Exception as e:
             raise e
-        finally:
-            outputs = objective.step(final_value)
 
-            if not objective.use_jac and not objective.use_hess:
-                value = outputs
-                grad = None
-                hess = None
-            elif objective.use_jac and not objective.use_hess:
-                value, grad = outputs
-                hess = None
-            else:
-                value, grad, hess = outputs
+        outputs = objective.step(final_value)
 
-            objective.update_progressbar(value, grad, hess, completed=True)
+        if not objective.use_jac and not objective.use_hess:
+            value = outputs
+            grad = None
+            hess = None
+        elif objective.use_jac and not objective.use_hess:
+            value, grad = outputs
+            hess = None
+        else:
+            value, grad, hess = outputs
+
+        objective.update_progressbar(value, grad, hess, completed=True)
 
     return res
