@@ -1,3 +1,5 @@
+from collections.abc import Callable, Sequence
+
 import numpy as np
 
 from rich.console import Console
@@ -8,7 +10,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.table import Column
-from scipy.optimize import _basinhopping
+from scipy.optimize import OptimizeResult
 from scipy.optimize._basinhopping import (
     AdaptiveStepsize,
     BasinHoppingRunner,
@@ -56,23 +58,67 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
 
 
 def basinhopping(
-    func,
-    x0,
-    niter=100,
-    T=1.0,
-    stepsize=0.5,
-    minimizer_kwargs=None,
-    take_step=None,
-    accept_test=None,
-    callback=None,
-    interval=50,
-    progressbar=True,
-    niter_success=None,
-    rng=None,
+    func: Callable[..., float | np.ndarray],
+    x0: Sequence[float],
+    niter: int = 100,
+    T: float = 1.0,
+    stepsize: float = 0.5,
+    minimizer_kwargs: dict | None = None,
+    take_step: Callable | None = None,
+    accept_test: Callable | None = None,
+    callback: Callable | None = None,
+    interval: int = 50,
+    progressbar: bool = True,
+    verbose: bool = False,
+    niter_success: int | None = None,
+    rng: int | float | np.random.Generator | None = None,
     *,
-    target_accept_rate=0.5,
-    stepwise_factor=0.9,
-):
+    target_accept_rate: float = 0.5,
+    stepwise_factor: float = 0.9,
+) -> OptimizeResult:
+    """
+    Perform a global optimization using the basin-hopping algorithm. For details, see scipy.optimize.basinhopping.
+
+    Parameters
+    ----------
+    func: Callable
+        Scalar function to optimize
+    x0: np.ndarray
+        Initial values
+    niter: int
+        Number of basin-hopping iterations
+    T: float
+        Temperature parameter for the accept/reject criterion
+    stepsize: float
+        Initial step size for use in the random displacement
+    minimizer_kwargs: dict, optional
+        Extra keyword arguments to pass to the minimizer
+    take_step: Callable, optional
+        Custom step-taking routine
+    accept_test: Callable, optional
+        Custom accept/reject routine
+    callback: Callable, optional
+        User-supplied function to call after each iteration
+    interval: int
+        Interval for how often to update the step size
+    progressbar: bool
+        Whether to display a progress bar
+    verbose: bool
+        Whether to print verbose output. Ignored if progressbar is True.
+    niter_success: int, optional
+        Stop if the global minimum candidate remains the same for this many iterations
+    rng: np.random.RandomState, optional
+        Random number generator
+    target_accept_rate: float
+        Target acceptance rate for the adaptive step size
+    stepwise_factor: float
+        Factor to adjust the step size
+
+    Returns
+    -------
+    res: OptimizerResult
+        Result of optimization
+    """
     if target_accept_rate <= 0.0 or target_accept_rate >= 1.0:
         raise ValueError("target_accept_rate has to be in range (0, 1)")
     if stepwise_factor <= 0.0 or stepwise_factor >= 1.0:
@@ -93,6 +139,9 @@ def basinhopping(
 
     use_jac = has_fused_f_and_grad or minimizer_kwargs.get("jac", False)
     progress = initialize_progress_bar(progressbar, use_jac=use_jac, use_hess=False)
+
+    if progressbar:
+        verbose = False
 
     bh_task = progress.add_task(
         description="Basinhopping",
@@ -120,7 +169,7 @@ def basinhopping(
         func,
         progressbar=progress,
         progress_task=minimize_task,
-        verbose=False,
+        verbose=verbose,
         **minimizer_kwargs,
     )
 
@@ -136,7 +185,7 @@ def basinhopping(
                 interval=interval,
                 accept_rate=target_accept_rate,
                 factor=stepwise_factor,
-                verbose=False,
+                verbose=verbose,
             )
         else:
             take_step_wrapped = take_step
@@ -148,7 +197,7 @@ def basinhopping(
             interval=interval,
             accept_rate=target_accept_rate,
             factor=stepwise_factor,
-            verbose=False,
+            verbose=verbose,
         )
 
     # set up accept tests
@@ -165,7 +214,7 @@ def basinhopping(
     if niter_success is None:
         niter_success = niter + 2
 
-    bh = BasinHoppingRunner(x0, wrapped_minimizer, take_step_wrapped, accept_tests)
+    bh = BasinHoppingRunner(x0, wrapped_minimizer, take_step_wrapped, accept_tests, disp=verbose)
 
     # The wrapped minimizer is called once during construction of
     # BasinHoppingRunner, so run the callback
@@ -179,10 +228,12 @@ def basinhopping(
 
     with progress:
         for i in range(niter):
-            progress.reset(minimize_task, visible=True)
+            if progressbar:
+                progress.reset(minimize_task, visible=True)
             new_global_min = bh.one_cycle()
-            if new_global_min:
+            if new_global_min and progressbar:
                 grad_norm_at_min = progress.tasks[minimize_task].fields["grad_norm"]
+
             progress.update(
                 bh_task,
                 advance=1,
@@ -224,7 +275,5 @@ def basinhopping(
     res.message = message
     res.nit = i + 1
     res.success = res.lowest_optimization_result.success
+
     return res
-
-
-basinhopping.__doc__ = _basinhopping.basinhopping.__doc__
