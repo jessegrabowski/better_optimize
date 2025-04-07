@@ -9,6 +9,8 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
+    Progress,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -28,9 +30,10 @@ class ObjectiveWrapper:
         has_fused_f_and_grad: bool = False,
         args: tuple | None = None,
         maxeval: int = 5000,
-        progressbar: bool = True,
+        progressbar: bool | Progress = True,
         progressbar_update_interval: int = 1,
         root=False,
+        task: TaskID | None = None,
     ):
         self.n_eval = 0
         self.maxeval = maxeval
@@ -42,7 +45,7 @@ class ObjectiveWrapper:
         self.root = root
 
         self.progress = None
-        self.task = None
+        self.task = task
 
         self.update_every = progressbar_update_interval
         self.interrupted = False
@@ -56,8 +59,12 @@ class ObjectiveWrapper:
             self.f_hess = lambda x: hess(x, *self.args)
 
         self.previous_x = None
-        self.progressbar = progressbar
-        self.progress = self.initialize_progress_bar()
+        if isinstance(progressbar, bool):
+            self.progressbar = progressbar
+            self.progress = self.initialize_progress_bar()
+        else:
+            self.progressbar = True
+            self.progress = progressbar
 
     def step(self, x):
         grad = None
@@ -127,7 +134,7 @@ class ObjectiveWrapper:
             hess_norm = np.linalg.norm(hess)
             value_dict["hess_norm"] = hess_norm
 
-        if self.n_eval == 0:
+        if self.n_eval == 0 and self.task is None:
             verb = "Minimizing" if not self.root else "Finding Roots"
             self.task = self.progress.add_task(verb, total=self.maxeval, refresh=True, **value_dict)
 
