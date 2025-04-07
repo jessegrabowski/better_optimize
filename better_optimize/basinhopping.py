@@ -53,7 +53,7 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
         ]
 
     return ToggleableProgress(
-        *columns, expand=False, disable=not progressbar, console=Console(width=100)
+        *columns, expand=False, disable=not progressbar, console=Console(width=100), transient=True
     )
 
 
@@ -257,6 +257,11 @@ def basinhopping(
             elif count > niter_success:
                 message = ["success condition satisfied"]
                 break
+
+    # Hack -- jupyter wants transient = True, or else a bunch of newlines get inserted. But when transient = True,
+    # the progress disappears in the terminal. Setting False now makes both work.
+    if hasattr(progress, "live") and progress.live.transient:
+        progress.live.transient = False
 
     with progress:
         progress.update(
