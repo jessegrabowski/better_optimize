@@ -10,6 +10,7 @@ from scipy.sparse.linalg import LinearOperator
 
 from better_optimize.constants import minimize_method
 from better_optimize.minimize import minimize
+from better_optimize.utilities import ToggleableProgress
 
 all_methods = list(get_args(minimize_method))
 no_grad_methods = ["nelder-mead", "powell", "CG", "BFGS", "L-BFGS-B"]
@@ -249,3 +250,28 @@ def test_constrained_rosen():
         tol=1e-20,
     )
     assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)
+
+
+def test_minimize_with_external_progressbar():
+    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+    progress = ToggleableProgress()
+    task1 = progress.add_task("task1")
+    task2 = progress.add_task("task2", f_value=0.0)
+
+    res = minimize(
+        partial(rosen, a=100, b=0),
+        x0,
+        method="L-BFGS-B",
+        tol=1e-8,
+        maxiter=5000,
+        progressbar=progress,
+        progress_task=task2,
+    )
+
+    assert isinstance(res, OptimizeResult)
+    assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
+    assert_allclose(res.fun, 0.0, atol=1e-8, rtol=1e-8)
+
+    assert task1 == 0
+    assert task2 > 0
