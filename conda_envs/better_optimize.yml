@@ -1,6 +1,7 @@
 name: better_optimize
 channels:
-- conda-forge
+  - conda-forge
+  - nodefaults
 dependencies:
   - numpy
   - scipy>=1.15
