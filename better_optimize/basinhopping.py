@@ -282,3 +282,6 @@ def basinhopping(
     res.success = res.lowest_optimization_result.success
 
     return res
+
+
+__all__ = ["basinhopping"]

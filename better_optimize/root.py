@@ -100,3 +100,6 @@ def root(
 
     optimizer_result = optimizer_early_stopping_wrapper(f_optim)
     return optimizer_result
+
+
+__all__ = ["root"]
