@@ -1,9 +1,10 @@
 name: better_optimize
 channels:
-- conda-forge
+  - conda-forge
+  - nodefaults
 dependencies:
   - numpy
-  - scipy
+  - scipy>=1.15
   - rich
   - pytest
   - pytest-cov

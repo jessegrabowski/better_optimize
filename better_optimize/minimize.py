@@ -113,3 +113,6 @@ def minimize(
 
     optimizer_result = optimizer_early_stopping_wrapper(f_optim)
     return optimizer_result
+
+
+__all__ = ["minimize"]
