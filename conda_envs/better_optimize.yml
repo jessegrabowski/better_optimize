@@ -3,7 +3,7 @@ channels:
 - conda-forge
 dependencies:
   - numpy
-  - scipy
+  - scipy>=1.15
   - rich
   - pytest
   - pytest-cov
