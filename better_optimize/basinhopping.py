@@ -17,6 +17,7 @@ from scipy.optimize._basinhopping import (
     Metropolis,
     MinimizerWrapper,
     RandomDisplacement,
+    Storage,
     check_random_state,
 )
 
@@ -57,6 +58,35 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
     )
 
 
+class AllowFailureStorage(Storage):
+    """
+    Subclass of Storage that allows the minimizer to fail, but still updates the global minimum
+    if the new point is better than the current global minimum.
+    """
+
+    def update(self, minres):
+        if minres.fun < self.minres.fun:
+            self._add(minres)
+            return True
+        else:
+            return False
+
+
+class AllowFailureBasinHoppingRunner(BasinHoppingRunner):
+    """
+    A subclass of BasinHoppingRunner that allows the minimizer to fail, but still updates the
+    global minimum if the new point is better than the current global minimum.
+    """
+
+    def __init__(
+        self, x0, minimizer, step_taking, accept_tests, accept_on_minimizer_fail=False, disp=False
+    ):
+        super().__init__(x0, minimizer, step_taking, accept_tests, disp=disp)
+
+        if accept_on_minimizer_fail:
+            self.storage = AllowFailureStorage(self.storage.minres)
+
+
 def basinhopping(
     func: Callable[..., float | np.ndarray],
     x0: Sequence[float],
@@ -66,6 +96,7 @@ def basinhopping(
     minimizer_kwargs: dict | None = None,
     take_step: Callable | None = None,
     accept_test: Callable | None = None,
+    accept_on_minimizer_fail: bool = False,
     callback: Callable | None = None,
     interval: int = 50,
     progressbar: bool = True,
@@ -97,6 +128,9 @@ def basinhopping(
         Custom step-taking routine
     accept_test: Callable, optional
         Custom accept/reject routine
+    accept_on_minimizer_fail: bool
+        Accept the new point even if the minimizer fails. Will also update the global minimum if the point is
+        better than the current global minimum, even if the minimizer fails.
     callback: Callable, optional
         User-supplied function to call after each iteration
     interval: int
@@ -214,7 +248,14 @@ def basinhopping(
     if niter_success is None:
         niter_success = niter + 2
 
-    bh = BasinHoppingRunner(x0, wrapped_minimizer, take_step_wrapped, accept_tests, disp=verbose)
+    bh = AllowFailureBasinHoppingRunner(
+        x0,
+        wrapped_minimizer,
+        take_step_wrapped,
+        accept_tests,
+        accept_on_minimizer_fail=accept_on_minimizer_fail,
+        disp=verbose,
+    )
 
     # The wrapped minimizer is called once during construction of
     # BasinHoppingRunner, so run the callback
@@ -224,7 +265,11 @@ def basinhopping(
     # start main iteration loop
     count, i = 0, 0
     message = ["requested number of basinhopping iterations completed" " successfully"]
+
     grad_norm_at_min = 0.0
+    if use_jac:
+        _, grad_val = func(bh.x)
+        grad_norm_at_min = np.linalg.norm(grad_val)
 
     with progress:
         for i in range(niter):
