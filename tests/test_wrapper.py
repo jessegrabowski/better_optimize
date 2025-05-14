@@ -1,3 +1,8 @@
+import json
+import os
+import subprocess
+import sys
+
 from functools import partial
 
 import numpy as np
@@ -14,22 +19,26 @@ from better_optimize.wrapper import ObjectiveWrapper, optimizer_early_stopping_w
 )
 def test_early_return_from_keyboard_interrupt(root, method):
     # Run error_script.py in a separate process to test KeyboardInterrupt handling.
-    import os
-    import subprocess
-    import sys
 
     script_path = os.path.join(os.path.dirname(__file__), "util/error_script.py")
     args = [sys.executable, script_path, "--method", method]
     if root:
         args += ["--root"]
 
-    res = subprocess.check_output(args, stderr=subprocess.STDOUT)
+    process = subprocess.run(args, capture_output=True, text=True, check=False)
+
+    res = json.loads(process.stdout.strip())
+    assert not res["success"]
+
     if root:
         # lm doesn't allow callbacks, so we get the back return on interrupt
-        assert "Execution interrupted and callback failed!" in res.decode()
+        assert (
+            res["message"]
+            == "`StopIteration` or `KeyboardInterrupt` raised -- optimization stopped prematurely."
+        )
     else:
         # otherwise it should have stopped gracefully and given back the result object
-        assert "message: `callback` raised `StopIteration`." in res.decode()
+        assert res["message"] == "`callback` raised `StopIteration`."
 
 
 @pytest.mark.parametrize("root", [True, False], ids=["root", "minimize"])
