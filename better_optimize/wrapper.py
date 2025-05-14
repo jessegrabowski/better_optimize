@@ -15,6 +15,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.table import Column
+from scipy.optimize import OptimizeResult
 
 from better_optimize.utilities import ToggleableProgress
 
@@ -188,10 +189,12 @@ def optimizer_early_stopping_wrapper(f_optim: partial):
         except (KeyboardInterrupt, StopIteration):
             # Teardown the progress bar if necessary, then forward the error
             final_value = objective.previous_x
-            res = {"x": final_value, "fun": objective.step(final_value)}
-            _log.warning(
-                "Execution interrupted and callback failed! Returning partial results as a dictionary "
-                "(not a scipy.optimize.OptimizeResult)."
+            res = OptimizeResult(
+                x=final_value,
+                fun=objective.previous_x,
+                success=False,
+                message="`StopIteration` or `KeyboardInterrupt` raised -- optimization stopped "
+                "prematurely.",
             )
         except Exception as e:
             raise e

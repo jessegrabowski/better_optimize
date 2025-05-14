@@ -1,4 +1,5 @@
 import argparse
+import json
 
 from functools import partial
 
@@ -35,7 +36,7 @@ def main():
     root = args.root
     method = args.method
 
-    objective = ObjectiveWrapper(f=f, root=root)
+    objective = ObjectiveWrapper(f=f, root=root, progressbar=False)
 
     f_optim = partial(
         scipy_root if root else scipy_minimize,
@@ -47,7 +48,16 @@ def main():
 
     res = optimizer_early_stopping_wrapper(f_optim)
 
-    return res
+    # Save result as a serializable JSON
+    output = {
+        "x": res.x.tolist(),
+        "fun": res.fun if not root else res.fun.tolist(),
+        "success": res.success,
+        "message": res.message,
+    }
+    output = json.dumps(output)
+
+    return output
 
 
 if __name__ == "__main__":
