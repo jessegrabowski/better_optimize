@@ -154,19 +154,36 @@ def validate_provided_functions_minimize(
     f_hess: Callable[[np.ndarray], np.ndarray] | None,
     f_hessp: Callable[[np.ndarray], np.ndarray] | None,
     has_fused_f_and_grad: bool,
+    has_fused_f_grad_hess: bool,
     verbose=True,
-) -> None:
+) -> tuple[bool, bool, bool]:
     has_grad, has_hess, has_hessp = map(lambda f: f is not None, [f_grad, f_hess, f_hessp])
     uses_grad, uses_hess, uses_hessp, *_ = MINIMIZE_MODE_KWARGS[method].values()
 
-    if has_fused_f_and_grad and has_grad:
-        _log.warning(
-            "Objective function returns a tuple (interpreted as (loss, gradient), but a gradient function was "
-            "also provided. The gradient function will be ignored."
-        )
+    # Handle fused outputs first
+    if has_fused_f_grad_hess:
+        if verbose and (has_grad or has_hess):
+            _log.warning(
+                "Objective function returns a tuple (interpreted as (loss, gradient, hessian)), "
+                "but a gradient or hessian function was also provided. The gradient and hessian functions will be ignored."
+            )
+        if verbose and has_hessp:
+            _log.warning(
+                "Objective function returns a tuple (interpreted as (loss, gradient, hessian)), "
+                "but a hessian-vector product function was also provided. The hessian-vector product function will be ignored."
+            )
+        # Triple-fused disables external grad/hess/hessp
+        has_grad = True
+        has_hess = True
+        has_hessp = False
 
     elif has_fused_f_and_grad:
-        has_grad = True
+        if verbose and has_grad:
+            _log.warning(
+                "Objective function returns a tuple (interpreted as (loss, gradient)), "
+                "but a gradient function was also provided. The gradient function will be ignored."
+            )
+        has_grad = True  # fused (loss, grad) disables external grad
 
     if method not in MINIMIZE_MODE_KWARGS:
         raise ValueError(
@@ -179,31 +196,33 @@ def validate_provided_functions_minimize(
             "except trust-exact and dogleg, use_hessp is preferred."
         )
 
-    if has_grad and not uses_grad and verbose:
+    if verbose and (has_grad and not uses_grad):
         _log.warning(
             f"Gradient provided but not used by method {method}. Gradients will still be evaluated at each "
-            f"optimzer step and the norm will be reported as a diagnositc. For large problems, this may be "
+            f"optimizer step and the norm will be reported as a diagnostic. For large problems, this may be "
             f"computationally intensive."
         )
 
-    if (has_hess and not uses_hess) or (has_hessp and not uses_hessp) and verbose:
+    if verbose and ((has_hess and not uses_hess) or (has_hessp and not uses_hessp)):
         _log.warning(
-            f"Hessian provided but not used by method {method}. The full hessian will still be evaluated at "
-            f"each optimzer step and the norm will be reported as a diagnositc. For large problems, this may "
-            f"be computationally intensive."
+            f"Hessian or Hessian-vector product provided but not used by method {method}. "
+            f"The full Hessian or Hessian-vector product will still be evaluated at each optimizer step and "
+            f"the norm will be reported as a diagnostic. For large problems, this may be computationally intensive."
         )
 
-    if has_hess and not has_hessp and uses_hessp and uses_hess and verbose:
+    if verbose and (has_hess and not has_hessp and uses_hessp and uses_hess):
         _log.warning(
-            f"You provided a function to compute the full hessian, but method {method} allows the use of a "
-            f"hessian-vector product instead. Consider passing hessp instead -- this may be significantly "
+            f"You provided a function to compute the full Hessian, but method {method} allows the use of a "
+            f"Hessian-vector product instead. Consider passing hessp instead -- this may be significantly "
             f"more efficient."
         )
+
+    return has_grad, has_hess, has_hessp
 
 
 def validate_provided_functions_root(
     method: root_method, f, jac, has_fused_f_and_grad: bool, verbose: bool = True
-):
+) -> bool:
     has_jac = jac is not None
     info_dict = get_option_kwargs(method)
     uses_jac = info_dict["uses_jac"]
@@ -224,19 +243,88 @@ def validate_provided_functions_root(
             f"computationally intensive."
         )
 
+    return has_jac
 
-def check_f_is_fused(f, x0, args):
+
+def check_f_is_fused_minimize(f, x0, args) -> tuple[bool, bool]:
+    """
+    Check if the minimize objective function returns fused outputs (value, grad[, hess]).
+    Returns (is_fused, has_hess).
+    """
     args = () if args is None else args
     output = f(x0, *args)
+
+    if not isinstance(output, tuple | list):
+        return (False, False)
+
+    if len(output) == 2:
+        value, grad = output
+        hess = None
+        ret_val = (True, False)
+    elif len(output) == 3:
+        value, grad, hess = output
+        ret_val = (True, True)
+    else:
+        raise ValueError(
+            "Objective function should return either a scalar loss, a two-tuple of (loss, gradient), "
+            "or three-tuple of (loss, gradient, hessian)."
+        )
+
+    # Accept float, numpy scalar, or 0-d array as scalar
+    if not (
+        np.isscalar(value)
+        or (isinstance(value, np.ndarray) and (value.shape == () or value.shape == (1,)))
+    ):
+        raise ValueError(
+            "First value returned by the objective function must be a scalar (float, numpy scalar, or 0-d array)."
+        )
+
+    if not (isinstance(grad, np.ndarray) and grad.ndim == 1):
+        raise ValueError(
+            "Second value returned by the objective function must be a 1d numpy array representing the gradient."
+        )
+
+    if hess is not None:
+        if not (isinstance(hess, np.ndarray) and hess.ndim == 2):
+            raise ValueError(
+                "Third value returned by the objective function must be a 2d numpy array representing the Hessian."
+            )
+
+    return ret_val
+
+
+def check_f_is_fused_root(f, x0, args) -> bool:
+    """
+    Check if the root objective function returns fused outputs (value[, jac]), and returns True if it does.
+    """
+    args = () if args is None else args
+    output = f(x0, *args)
+
     if not isinstance(output, tuple | list):
         return False
 
-    # If the output is a tuple, it should be length 2 (returning the value and the grad).If not, something is wrong
-    if len(output) != 2:
+    if len(output) == 2:
+        value, jac = output
+        ret_val = True
+    elif len(output) == 1:
+        value = output[0]
+        jac = None
+        ret_val = True
+    else:
         raise ValueError(
-            "Objective function should return either a scalar loss or a two-tuple of (loss, gradient)"
+            "Objective function should return either a 1d array or a two-tuple of (value, jacobian)."
         )
-    return True
+
+    if not (isinstance(value, np.ndarray) and value.ndim == 1):
+        raise ValueError("First value returned by the objective function must be a 1d numpy array.")
+
+    if jac is not None:
+        if not (isinstance(jac, np.ndarray) and jac.ndim == 2):
+            raise ValueError(
+                "Second value returned by the objective function must be a 2d numpy array representing the Jacobian."
+            )
+
+    return ret_val
 
 
 def determine_maxiter(
@@ -314,3 +402,102 @@ def determine_tolerance(optimizer_kwargs: dict, method: minimize_method | root_m
             optimizer_kwargs["options"][tol_name] = tol
 
     return optimizer_kwargs
+
+
+class LRUCache1:
+    """
+    Simple LRU cache with a memory size of 1.
+
+    This cache is only usable for a function that takes a single input `x` and returns a single output. The
+    function can also take any number of additional arguments `*args`, but these are assumed to be constant
+    between function calls.
+
+    The purpose of this cache is to allow for Hessian computation to be reused when calling scipy.optimize functions.
+    It is very often the case that some sub-computations are repeated between the objective, gradient, and hessian
+    functions, but by default scipy only allows for the objective and gradient to be fused.
+
+    By using this cache, all 3 functions can be fused, which can significantly speed up the optimization process for
+    expensive functions.
+    """
+
+    def __init__(
+        self, fn, f_returns_list: bool = False, copy_x: bool = False, dtype: str | None = None
+    ):
+        self.fn = fn
+        self.last_x = None
+        self.last_result = None
+        self.copy_x = copy_x
+        self.f_returns_list = f_returns_list
+
+        # Scipy does not respect dtypes *at all*, so we have to force it ourselves.
+        self.dtype = dtype
+
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+        self.value_calls = 0
+        self.grad_calls = 0
+        self.value_and_grad_calls = 0
+        self.hess_calls = 0
+
+    def __call__(self, x, *args):
+        """
+        Call the cached function with the given input `x` and additional arguments `*args`.
+
+        If the input `x` is the same as the last input, return the cached result. Otherwise update the cache with the
+        new input and result.
+        """
+        x = x.astype(self.dtype)
+
+        if self.last_result is None or not (x == self.last_x).all():
+            self.cache_misses += 1
+
+            # scipy.optimize.root changes x in place, so the cache has to copy it, otherwise we get false
+            # cache hits and optimization always fails.
+            if self.copy_x:
+                x = x.copy()
+            self.last_x = x
+
+            result = self.fn(x, *args)
+            self.last_result = result
+
+            return result
+
+        else:
+            self.cache_hits += 1
+            return self.last_result
+
+    def value(self, x, *args):
+        self.value_calls += 1
+        if not self.f_returns_list:
+            return self(x, *args)
+        else:
+            return self(x, *args)[0]
+
+    def grad(self, x, *args):
+        self.grad_calls += 1
+        return self(x, *args)[1]
+
+    def value_and_grad(self, x, *args):
+        self.value_and_grad_calls += 1
+        return self(x, *args)[:2]
+
+    def hess(self, x, *args):
+        self.hess_calls += 1
+        return self(x, *args)[-1]
+
+    def report(self):
+        _log.info(f"Value and Grad calls: {self.value_and_grad_calls}")
+        _log.info(f"Hess Calls: {self.hess_calls}")
+        _log.info(f"Hits: {self.cache_hits}")
+        _log.info(f"Misses: {self.cache_misses}")
+
+    def clear_cache(self):
+        self.last_x = None
+        self.last_result = None
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.value_calls = 0
+        self.grad_calls = 0
+        self.value_and_grad_calls = 0
+        self.hess_calls = 0

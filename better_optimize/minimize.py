@@ -10,7 +10,8 @@ from scipy.sparse.linalg import LinearOperator
 
 from better_optimize.constants import minimize_method
 from better_optimize.utilities import (
-    check_f_is_fused,
+    LRUCache1,
+    check_f_is_fused_minimize,
     determine_maxiter,
     determine_tolerance,
     kwargs_to_options,
@@ -69,10 +70,17 @@ def minimize(
         Optimization result
 
     """
-    has_fused_f_and_grad = check_f_is_fused(f, x0, args)
-    validate_provided_functions_minimize(
-        method, jac, hess, hessp, has_fused_f_and_grad, verbose=verbose
+    has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(f, x0, args)
+
+    use_grad, use_hess, use_hessp = validate_provided_functions_minimize(
+        method, jac, hess, hessp, has_fused_f_and_grad, has_fused_f_grad_hess, verbose=verbose
     )
+
+    f_returns_list = has_fused_f_and_grad or has_fused_f_grad_hess
+    f_cached = LRUCache1(f, f_returns_list=f_returns_list, copy_x=False, dtype=x0.dtype)
+
+    if has_fused_f_grad_hess:
+        hess = f_cached.hess
 
     options = optimizer_kwargs.pop("options", {})
     optimizer_kwargs["options"] = options
@@ -83,12 +91,11 @@ def minimize(
 
     # Test hessian function -- if it returns a LinearOperator, it can't be used inside the wrapper
     args = () if args is None else args
-    use_hess = hess is not None and not isinstance(hess(x0, *args), LinearOperator)
-    use_hessp = hessp is not None
+    use_hess = use_hess and not isinstance(hess(x0, *args), LinearOperator)
 
     objective = ObjectiveWrapper(
         maxeval=maxiter,
-        f=f,
+        f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
         jac=jac,
         hess=hess if use_hess else None,
         args=args,

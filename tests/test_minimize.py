@@ -1,3 +1,5 @@
+import sys
+
 from functools import partial
 from typing import get_args
 
@@ -10,7 +12,7 @@ from scipy.sparse.linalg import LinearOperator
 
 from better_optimize.constants import minimize_method
 from better_optimize.minimize import minimize
-from better_optimize.utilities import ToggleableProgress
+from better_optimize.utilities import LRUCache1, ToggleableProgress
 
 all_methods = list(get_args(minimize_method))
 no_grad_methods = ["nelder-mead", "powell", "CG", "BFGS", "L-BFGS-B"]
@@ -79,6 +81,13 @@ def rosen_fused(x, a, b):
     dy[-1] = 2 * a * (x[-1] - x[-2] ** 2)
 
     return y, dy
+
+
+def rosen_triple_fused(x, a, b):
+    y, dy = rosen_fused(x, a, b)
+    ddy = rosen_hess(x, a, b)
+
+    return y, dy, ddy
 
 
 @pytest.mark.parametrize("method", no_grad_methods, ids=no_grad_methods)
@@ -156,39 +165,87 @@ def test_rosen_with_hess(method: minimize_method):
 
 
 @pytest.mark.parametrize("method", hess_methods, ids=hess_methods)
-def test_rosen_with_hess_and_args(method: minimize_method):
-    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+@pytest.mark.parametrize(
+    "fn, hess",
+    [(rosen_fused, rosen_hess), (rosen_triple_fused, None)],
+    ids=["rosen_hess", "rosen_triple_fused"],
+)
+def test_rosen_with_hess_and_args(fn, hess, method: minimize_method, monkeypatch):
+    cache_holder = {}
 
-    res = minimize(
-        rosen,
-        x0,
-        args=(100, 0),
-        method=method,
-        jac=rosen_grad,
-        hess=rosen_hess,
-        tol=1e-20,
-        maxiter=10000,
-    )
+    def accessible_LRUCache1(*args, **kwargs):
+        cache = LRUCache1(*args, **kwargs)
+        cache_holder["cache"] = cache
+        return cache
+
+    minimize_mod = sys.modules["better_optimize.minimize"]
+
+    with monkeypatch.context() as c:
+        c.setattr(minimize_mod, "LRUCache1", accessible_LRUCache1)
+
+        x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+        res = minimize(
+            fn,
+            x0,
+            args=(100, 0),
+            method=method,
+            jac=rosen_grad,
+            hess=hess,
+            tol=1e-20,
+            maxiter=10000,
+        )
 
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
     assert_allclose(res.fun, 0.0, atol=1e-8, rtol=1e-8)
+
+    cache = cache_holder.get("cache")
+    assert cache is not None
+    assert (cache.cache_hits + cache.cache_misses) > 0
+    assert cache.value_and_grad_calls > 0
+    if hess is None:
+        # For the triple fused case, we expect cache hits during hessian evaluation.
+        assert cache.cache_hits > 0
+        assert cache.hess_calls > 0
 
 
 @pytest.mark.parametrize("method", hessp_methods, ids=hessp_methods)
-def test_rosen_with_hessp(method: minimize_method):
-    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+def test_rosen_with_hessp(method: minimize_method, monkeypatch):
+    cache_holder = {}
 
-    res = minimize(
-        partial(rosen, a=100, b=0),
-        x0,
-        method=method,
-        jac=partial(rosen_grad, a=100, b=0),
-        hessp=partial(rosen_hess_p, a=100, b=0),
-        tol=1e-20,
-    )
+    def accessible_LRUCache1(*args, **kwargs):
+        cache = LRUCache1(*args, **kwargs)
+        cache_holder["cache"] = cache
+        return cache
+
+    minimize_mod = sys.modules["better_optimize.minimize"]
+    with monkeypatch.context() as c:
+        c.setattr(minimize_mod, "LRUCache1", accessible_LRUCache1)
+        x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+        res = minimize(
+            partial(rosen, a=100, b=0),
+            x0,
+            method=method,
+            jac=partial(rosen_grad, a=100, b=0),
+            hessp=partial(rosen_hess_p, a=100, b=0),
+            tol=1e-20,
+        )
 
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
     assert_allclose(res.fun, 0.0, atol=1e-8, rtol=1e-8)
+
+    # Make sure that when jac and hessp are provided, we still use the cache, but it only calls the value function
+    cache = cache_holder.get("cache")
+    assert cache is not None
+    assert cache.grad_calls == 0
+    assert cache.hess_calls == 0
+
+    assert cache.cache_misses > 0
+    assert cache.value_calls > 0
+
+    # We except basically zero hits, but sometimes it might backtrack, so it suffices to make sure that
+    # there are more misses than hits.
+    assert cache.cache_hits < cache.cache_misses
 
 
 @pytest.mark.parametrize("method", hessp_methods, ids=hessp_methods)
@@ -232,9 +289,9 @@ def test_constrained_rosen():
 
     assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)
 
-    def rosen_hess_linop(x):
+    def rosen_hess_linop(x, a, b):
         def matvec(p):
-            return rosen_hess_p(x, p)
+            return rosen_hess_p(x, p, a=a, b=b)
 
         return LinearOperator((2, 2), matvec=matvec)
 
@@ -243,7 +300,7 @@ def test_constrained_rosen():
         x0,
         method="trust-constr",
         jac=partial(rosen_grad, a=100, b=0),
-        hess=partial(rosen_hess, a=100, b=0),
+        hess=partial(rosen_hess_linop, a=100, b=0),
         constraints=[linear_constraint, nonlinear_constraint],
         options={"verbose": 1},
         bounds=bounds,

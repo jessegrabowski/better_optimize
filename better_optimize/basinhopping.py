@@ -22,7 +22,12 @@ from scipy.optimize._basinhopping import (
 )
 
 from better_optimize.minimize import minimize
-from better_optimize.utilities import ToggleableProgress, check_f_is_fused
+from better_optimize.utilities import (
+    LRUCache1,
+    ToggleableProgress,
+    check_f_is_fused_minimize,
+    validate_provided_functions_minimize,  # <-- import the helper
+)
 
 
 def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
@@ -167,11 +172,34 @@ def basinhopping(
     if minimizer_kwargs is None:
         minimizer_kwargs = dict()
 
-    has_fused_f_and_grad = check_f_is_fused(func, x0, minimizer_kwargs.get("args", ()))
-    if has_fused_f_and_grad:
-        minimizer_kwargs.pop("jac", None)
+    has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(
+        func, x0, minimizer_kwargs.get("args", ())
+    )
 
-    use_jac = has_fused_f_and_grad or minimizer_kwargs.get("jac", False)
+    jac = minimizer_kwargs.pop("jac", None)
+    hess = minimizer_kwargs.pop("hess", None)
+    hessp = minimizer_kwargs.pop("hessp", None)
+    method = minimizer_kwargs.pop("method", "L-BFGS-B")
+    args = minimizer_kwargs.pop("args", ())
+
+    # Use the validation helper to determine which functions to use
+    use_jac, use_hess, use_hessp = validate_provided_functions_minimize(
+        method,
+        jac,
+        hess,
+        hessp,
+        has_fused_f_and_grad,
+        has_fused_f_grad_hess,
+        verbose=verbose,
+    )
+
+    f_returns_list = has_fused_f_and_grad or has_fused_f_grad_hess
+    f_cached = LRUCache1(func, f_returns_list=f_returns_list, copy_x=False, dtype=x0.dtype)
+
+    # If triple-fused, use hess from cache
+    if has_fused_f_grad_hess:
+        hess = f_cached.hess
+
     progress = initialize_progress_bar(progressbar, use_jac=use_jac, use_hess=False)
 
     if progressbar:
@@ -198,16 +226,23 @@ def basinhopping(
         hess_norm=0.0,
     )
 
-    wrapped_minimizer = MinimizerWrapper(
-        minimize,
-        func,
-        progressbar=progress,
-        progress_task=minimize_task,
-        verbose=verbose,
-        **minimizer_kwargs,
-    )
+    def wrapped_minimize(x0_inner, *args, **kwargs):
+        return minimize(
+            method=method,
+            f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
+            x0=x0_inner,
+            args=args,
+            jac=None if not use_jac else (True if has_fused_f_and_grad else jac),
+            hess=None if not use_hess else hess,
+            hessp=None if not use_hessp else hessp,
+            progressbar=progress,
+            progress_task=minimize_task,
+            verbose=verbose,
+            **minimizer_kwargs,
+        )
 
-    # set up step-taking algorithm
+    wrapped_minimizer = MinimizerWrapper(wrapped_minimize)
+
     if take_step is not None:
         if not callable(take_step):
             raise TypeError("take_step must be callable")
@@ -268,7 +303,7 @@ def basinhopping(
 
     grad_norm_at_min = 0.0
     if use_jac:
-        _, grad_val = func(bh.x)
+        grad_val = f_cached.grad(bh.x, *args)
         grad_norm_at_min = np.linalg.norm(grad_val)
 
     with progress:
