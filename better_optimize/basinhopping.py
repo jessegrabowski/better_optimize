@@ -306,6 +306,16 @@ def basinhopping(
         grad_val = f_cached.grad(bh.x, *args)
         grad_norm_at_min = np.linalg.norm(grad_val)
 
+    # Update the progress bar with initial values
+    progress.update(
+        bh_task,
+        advance=1,
+        step_size=take_step_wrapped.takestep.stepsize,
+        target_accept=take_step_wrapped.target_accept_rate,
+        f_value=bh.storage.get_lowest().fun,
+        grad_norm=grad_norm_at_min,
+    )
+
     with progress:
         for i in range(niter):
             if progressbar:
