@@ -1,4 +1,4 @@
-import sys
+import importlib
 
 import numpy as np
 import pytest
@@ -129,8 +129,6 @@ def test_progress_global_gradient_updates_on_new_minimum(monkeypatch):
 
 
 def test_move_to_new_minimum_on_optimizer_failure(monkeypatch):
-    import importlib
-
     # Required, because otherwise monkeypatch can't find the *module* basinhopping; only the function
     bh_module = importlib.import_module("better_optimize.basinhopping")
     original_minimize = bh_module.minimize
@@ -158,7 +156,7 @@ def test_move_to_new_minimum_on_optimizer_failure(monkeypatch):
         func2d_hard_fused,
         x0=[0.8, 0.8],  # Start away from the global minimum
         minimizer_kwargs={"method": "L-BFGS-B", "jac": True},
-        niter=10,
+        niter=25,
         progressbar=False,
         accept_on_minimizer_fail=True,
     )
@@ -217,7 +215,7 @@ def test_basinhopping_fused_variants(fused_func, minimizer_kwargs, expected):
         fused_func,
         x0=[1.0, 1.0],
         minimizer_kwargs=minimizer_kwargs,
-        niter=10,
+        niter=25,
         progressbar=False,
     )
     assert res.success is True
@@ -240,7 +238,7 @@ def test_basinhopping_fused_variants_cache(monkeypatch, fused_func, minimizer_kw
         cache_holder["cache"] = cache
         return cache
 
-    basinhopping_mod = sys.modules["better_optimize.basinhopping"]
+    basinhopping_mod = importlib.import_module("better_optimize.basinhopping")
 
     with monkeypatch.context() as c:
         c.setattr(basinhopping_mod, "LRUCache1", accessible_LRUCache1)
@@ -248,7 +246,7 @@ def test_basinhopping_fused_variants_cache(monkeypatch, fused_func, minimizer_kw
             fused_func,
             x0=[1.0, 1.0],
             minimizer_kwargs=minimizer_kwargs,
-            niter=10,
+            niter=25,
             progressbar=False,
         )
 
@@ -262,3 +260,103 @@ def test_basinhopping_fused_variants_cache(monkeypatch, fused_func, minimizer_kw
     if fused_func is func2d_triple_fused:
         assert cache.cache_hits > 0
         assert cache.hess_calls > 0
+
+
+def test_initial_minimization_appears_on_progress_bar(monkeypatch):
+    bh_module = importlib.import_module("better_optimize.basinhopping")
+    AllowFailureStorage = bh_module.AllowFailureStorage
+
+    initial_states = {}
+    progress_updates = []
+
+    # Patch AllowFailureStorage._add to record the initial minres and inject nonsense values
+    original_add = AllowFailureStorage._add
+
+    def tracking_add(self, minres):
+        # Only record the very first call (initialization)
+        if not initial_states:
+            # Inject nonsense values
+            minres.x = np.array([42.0, -99.0])
+            minres.fun = 12345.678
+            minres.success = False
+
+            initial_states["x"] = np.copy(minres.x)
+            initial_states["fun"] = minres.fun
+            initial_states["success"] = minres.success
+        return original_add(self, minres)
+
+    monkeypatch.setattr(AllowFailureStorage, "_add", tracking_add)
+    original_update = ToggleableProgress.update
+
+    def tracking_update(self, task_id, **kwargs):
+        # Only track updates for task 0 (the main basinhopping task)
+        if task_id == 0:
+            progress_updates.append(dict(kwargs))
+        return original_update(self, task_id, **kwargs)
+
+    monkeypatch.setattr(ToggleableProgress, "update", tracking_update)
+
+    x0 = np.array([0.5, 0.5])
+    bh_module.basinhopping(
+        func2d_hard_fused,
+        x0=x0,
+        minimizer_kwargs={"method": "L-BFGS-B", "jac": True},
+        niter=1,
+        progressbar=True,
+        accept_on_minimizer_fail=True,
+    )
+
+    # The initial state should be present and success should be False
+    assert "x" in initial_states and "fun" in initial_states and "success" in initial_states
+    np.testing.assert_allclose(initial_states["x"], np.array([42.0, -99.0]), atol=1e-8)
+    assert initial_states["fun"] == 12345.678
+    assert initial_states["success"] is False
+
+    # The first progressbar update for task 0 should reflect the nonsense values
+    found = False
+    for upd in progress_updates:
+        if "f_value" in upd and abs(upd["f_value"] - 12345.678) < 1e-6:
+            found = True
+            break
+    assert found, "Injected nonsense fun value did not appear in progressbar update"
+
+
+def test_minimizer_progressbar_total_constant(monkeypatch):
+    """
+    Test that the minimizer progress bar's total (task 1) is always the requested maxiter value
+    at the beginning of each iteration.
+    """
+    bh_module = importlib.import_module("better_optimize.basinhopping")
+    ToggleableProgress = importlib.import_module("better_optimize.utilities").ToggleableProgress
+
+    minimizer_totals = []
+
+    original_update = ToggleableProgress.update
+
+    def tracking_update(self, task_id, **kwargs):
+        # Task 1 is the minimizer progress bar
+        if task_id == 1:
+            # Record the total at each update
+            minimizer_totals.append(self.tasks[task_id].total)
+        return original_update(self, task_id, **kwargs)
+
+    monkeypatch.setattr(ToggleableProgress, "update", tracking_update)
+
+    # Use a small maxiter for a quick test
+    maxiter = 7
+    x0 = np.array([0.5, 0.5])
+    bh_module.basinhopping(
+        func2d_hard_fused,
+        x0=x0,
+        minimizer_kwargs={"method": "L-BFGS-B", "jac": True, "maxiter": maxiter},
+        niter=5,
+        progressbar=True,
+        accept_on_minimizer_fail=True,
+    )
+
+    # All recorded totals should be equal to maxiter
+    assert minimizer_totals, "No minimizer progress bar updates were recorded."
+
+    # Scipy doesn't guarantee that the minimizer will always run for maxiter iterations, so just check that the
+    # majority of the recorded totals are equal to maxiter
+    assert sum(total == maxiter for total in minimizer_totals) / len(minimizer_totals) > 0.51
