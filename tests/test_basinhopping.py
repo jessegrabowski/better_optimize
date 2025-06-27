@@ -1,7 +1,10 @@
+import sys
+
 import numpy as np
+import pytest
 
 from better_optimize.basinhopping import AllowFailureStorage, basinhopping
-from better_optimize.utilities import ToggleableProgress
+from better_optimize.utilities import LRUCache1, ToggleableProgress
 
 
 def func1d(x):
@@ -39,6 +42,24 @@ def func2d_hard_fused(x):
     df[0] = 5 * np.pi * np.cos(5 * np.pi * x[0]) * (1 - x[0]) - np.sin(5 * np.pi * x[0])
     df[1] = 2 * (x[1] - 0.5)
     return f, df
+
+
+def func2d_hess(x):
+    # Hessian for func2d_easyderiv
+    H = np.array([[4.0, 2.0], [2.0, 4.0]])
+    return H
+
+
+def func2d_hessp(x, p):
+    # Hessian-vector product for func2d_easyderiv
+    H = np.array([[4.0, 2.0], [2.0, 4.0]])
+    return H @ p
+
+
+def func2d_triple_fused(x):
+    f, df = func2d_easyderiv(x)
+    H = func2d_hess(x)
+    return f, df, H
 
 
 def test_basinhopping_1d():
@@ -151,5 +172,93 @@ def test_move_to_new_minimum_on_optimizer_failure(monkeypatch):
     assert (minima_diff <= 0.0).all(), "Global minima are not monotonically decreasing."
 
 
-if __name__ == "__main__":
-    test_basinhopping_1d()
+@pytest.mark.parametrize(
+    "minimizer_kwargs",
+    [
+        {"method": "nelder-mead", "tol": 1e-8},
+        {"method": "L-BFGS-B", "tol": 1e-8, "jac": lambda x: func2d_easyderiv(x)[1]},
+        {
+            "method": "trust-exact",
+            "tol": 1e-8,
+            "jac": lambda x: func2d_easyderiv(x)[1],
+            "hess": func2d_hess,
+        },
+        {
+            "method": "trust-ncg",
+            "tol": 1e-8,
+            "jac": lambda x: func2d_easyderiv(x)[1],
+            "hessp": func2d_hessp,
+        },
+    ],
+    ids=["value_only", "jac_only", "hess_only", "hessp_only"],
+)
+def test_basinhopping_func2d_easyderiv_variants(minimizer_kwargs):
+    res = basinhopping(
+        func2d_easyderiv,
+        x0=[1.0, 1.0],
+        minimizer_kwargs=minimizer_kwargs,
+        niter=10,
+        progressbar=False,
+    )
+    assert res.success is True
+    np.testing.assert_allclose(res.x, np.array([2.0, -1.0]), atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "fused_func, minimizer_kwargs, expected",
+    [
+        (func2d, {"method": "L-BFGS-B", "tol": 1e-8}, np.array([-0.195, -0.1])),
+        (func2d_triple_fused, {"method": "trust-exact", "tol": 1e-8}, np.array([2.0, -1.0])),
+    ],
+    ids=["func2d_fused", "func2d_triple_fused"],
+)
+def test_basinhopping_fused_variants(fused_func, minimizer_kwargs, expected):
+    res = basinhopping(
+        fused_func,
+        x0=[1.0, 1.0],
+        minimizer_kwargs=minimizer_kwargs,
+        niter=10,
+        progressbar=False,
+    )
+    assert res.success is True
+    np.testing.assert_allclose(res.x, expected, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "fused_func, minimizer_kwargs, expected",
+    [
+        (func2d, {"method": "L-BFGS-B", "tol": 1e-8}, np.array([-0.195, -0.1])),
+        (func2d_triple_fused, {"method": "trust-exact", "tol": 1e-8}, np.array([2.0, -1.0])),
+    ],
+    ids=["func2d_fused", "func2d_triple_fused"],
+)
+def test_basinhopping_fused_variants_cache(monkeypatch, fused_func, minimizer_kwargs, expected):
+    cache_holder = {}
+
+    def accessible_LRUCache1(*args, **kwargs):
+        cache = LRUCache1(*args, **kwargs)
+        cache_holder["cache"] = cache
+        return cache
+
+    basinhopping_mod = sys.modules["better_optimize.basinhopping"]
+
+    with monkeypatch.context() as c:
+        c.setattr(basinhopping_mod, "LRUCache1", accessible_LRUCache1)
+        res = basinhopping(
+            fused_func,
+            x0=[1.0, 1.0],
+            minimizer_kwargs=minimizer_kwargs,
+            niter=10,
+            progressbar=False,
+        )
+
+    assert res.success is True
+    np.testing.assert_allclose(res.x, expected, atol=1e-3, rtol=1e-3)
+
+    cache = cache_holder.get("cache")
+    assert cache is not None
+    assert (cache.cache_hits + cache.cache_misses) > 0
+    assert cache.value_and_grad_calls > 0
+    if fused_func is func2d_triple_fused:
+        assert cache.cache_hits > 0
+        assert cache.hess_calls > 0

@@ -8,7 +8,8 @@ from scipy.optimize import root as sp_root
 
 from better_optimize.constants import root_method
 from better_optimize.utilities import (
-    check_f_is_fused,
+    LRUCache1,
+    check_f_is_fused_root,
     determine_maxiter,
     determine_tolerance,
     kwargs_to_jac_options,
@@ -65,10 +66,10 @@ def root(
         Optimization result
 
     """
-    has_fused_f_and_grad = check_f_is_fused(f, x0, args)
-    validate_provided_functions_root(
-        method, jac, has_fused_f_and_grad, has_fused_f_and_grad, verbose=verbose
-    )
+    has_fused_f_and_grad = check_f_is_fused_root(f, x0, args)
+    validate_provided_functions_root(method, f, jac, has_fused_f_and_grad, verbose=verbose)
+
+    f_cached = LRUCache1(f, f_returns_list=has_fused_f_and_grad, copy_x=True, dtype=x0.dtype)
 
     options = optimizer_kwargs.pop("options", {})
     optimizer_kwargs["options"] = options
@@ -80,7 +81,7 @@ def root(
 
     objective = ObjectiveWrapper(
         maxeval=maxiter,
-        f=f,
+        f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
         jac=jac,
         args=args,
         progressbar=progressbar,

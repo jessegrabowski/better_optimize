@@ -1,3 +1,5 @@
+import sys
+
 from functools import partial
 from typing import get_args
 
@@ -8,6 +10,7 @@ from numpy.testing import assert_allclose
 
 from better_optimize.constants import root_method
 from better_optimize.root import root
+from better_optimize.utilities import LRUCache1
 
 all_methods = list(get_args(root_method))
 
@@ -95,11 +98,30 @@ def test_root_with_jac_and_args(method: root_method):
 
 
 @pytest.mark.parametrize("method", ["hybr", "lm"], ids=["hybr", "lm"])
-def test_root_fused_objective(method: root_method):
-    x0 = np.array([0.8, 0.8])
-    res = root(partial(func2_fused, a=1, b=1), x0, method=method)
+def test_root_fused_objective(method: root_method, monkeypatch):
+    cache_holder = {}
+
+    def accessible_LRUCache1(*args, **kwargs):
+        cache = LRUCache1(*args, **kwargs)
+        cache_holder["cache"] = cache
+        return cache
+
+    root_mod = sys.modules["better_optimize.root"]
+    with monkeypatch.context() as c:
+        c.setattr(root_mod, "LRUCache1", accessible_LRUCache1)
+
+        x0 = np.array([0.8, 0.8])
+        res = root(partial(func2_fused, a=1, b=1), x0, method=method)
+
     assert_allclose(res.x, np.array([6.50409711, 0.90841421]))
     assert_allclose(res.fun, [0.0, 0.0], atol=1e-8, rtol=1e-8)
+
+    cache = cache_holder.get("cache")
+
+    assert cache is not None
+    assert (cache.cache_hits + cache.cache_misses) > 0
+    assert cache.value_and_grad_calls > 0
+    assert cache.hess_calls == 0  # Hessian not used by root
 
 
 @pytest.mark.parametrize(
