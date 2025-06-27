@@ -26,7 +26,8 @@ from better_optimize.utilities import (
     LRUCache1,
     ToggleableProgress,
     check_f_is_fused_minimize,
-    validate_provided_functions_minimize,  # <-- import the helper
+    determine_maxiter,
+    validate_provided_functions_minimize,
 )
 
 
@@ -171,6 +172,7 @@ def basinhopping(
     # set up minimizer
     if minimizer_kwargs is None:
         minimizer_kwargs = dict()
+    minimizer_kwargs = minimizer_kwargs.copy()  # avoid mutating caller's dict
 
     has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(
         func, x0, minimizer_kwargs.get("args", ())
@@ -216,6 +218,11 @@ def basinhopping(
         hess_norm=0.0,
     )
 
+    n_vars = x0.size if hasattr(x0, "size") else len(x0)
+    if "options" not in minimizer_kwargs:
+        minimizer_kwargs["options"] = {}
+    minimizer_maxiter, minimizer_kwargs = determine_maxiter(minimizer_kwargs, method, n_vars)
+
     minimize_task = progress.add_task(
         description="Minimize",
         name="Minimize",
@@ -224,9 +231,12 @@ def basinhopping(
         f_value=0.0,
         grad_norm=0.0,
         hess_norm=0.0,
+        total=minimizer_maxiter,
     )
 
     def wrapped_minimize(x0_inner, *args, **kwargs):
+        # Always keep the minimizer progress bar's total fixed at the requested maxiter
+        progress.update(minimize_task, total=minimizer_maxiter)
         return minimize(
             method=method,
             f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
