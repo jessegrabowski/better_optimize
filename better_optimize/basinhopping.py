@@ -193,7 +193,7 @@ def basinhopping(
         verbose=verbose,
     )
 
-    f_returns_list = not (has_fused_f_and_grad or has_fused_f_grad_hess)
+    f_returns_list = has_fused_f_and_grad or has_fused_f_grad_hess
     f_cached = LRUCache1(func, f_returns_list=f_returns_list, copy_x=False, dtype=x0.dtype)
 
     # If triple-fused, use hess from cache

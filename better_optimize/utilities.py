@@ -295,8 +295,7 @@ def check_f_is_fused_minimize(f, x0, args) -> tuple[bool, bool]:
 
 def check_f_is_fused_root(f, x0, args) -> bool:
     """
-    Check if the root objective function returns fused outputs (value[, jac]).
-    Returns (is_fused, None).
+    Check if the root objective function returns fused outputs (value[, jac]), and returns True if it does.
     """
     args = () if args is None else args
     output = f(x0, *args)

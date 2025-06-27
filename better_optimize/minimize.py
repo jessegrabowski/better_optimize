@@ -76,7 +76,7 @@ def minimize(
         method, jac, hess, hessp, has_fused_f_and_grad, has_fused_f_grad_hess, verbose=verbose
     )
 
-    f_returns_list = has_fused_f_grad_hess or has_fused_f_grad_hess
+    f_returns_list = has_fused_f_and_grad or has_fused_f_grad_hess
     f_cached = LRUCache1(f, f_returns_list=f_returns_list, copy_x=False, dtype=x0.dtype)
 
     if has_fused_f_grad_hess:
