@@ -271,7 +271,7 @@ def check_f_is_fused_minimize(f, x0, args) -> tuple[bool, bool]:
         )
 
     if not (
-        isinstance(value, float)
+        np.isscalar(value)
         or (hasattr(value, "shape") and (value.shape == () or value.shape == (1,)))
     ):
         raise ValueError(
@@ -315,12 +315,12 @@ def check_f_is_fused_root(f, x0, args) -> bool:
         )
 
     if not (hasattr(value, "ndim") and value.ndim == 1):
-        raise ValueError("First value returned by the objective function must be a 1d numpy array.")
+        raise ValueError("First value returned by the objective function must be a 1d array.")
 
     if jac is not None:
         if not (hasattr(jac, "ndim") and jac.ndim == 2):
             raise ValueError(
-                "Second value returned by the objective function must be a 2d numpy array representing the Jacobian."
+                "Second value returned by the objective function must be a 2d array representing the Jacobian."
             )
 
     return ret_val
