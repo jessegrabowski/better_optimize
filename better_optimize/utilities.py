@@ -270,24 +270,23 @@ def check_f_is_fused_minimize(f, x0, args) -> tuple[bool, bool]:
             "or three-tuple of (loss, gradient, hessian)."
         )
 
-    # Accept float, numpy scalar, or 0-d array as scalar
     if not (
         np.isscalar(value)
-        or (isinstance(value, np.ndarray) and (value.shape == () or value.shape == (1,)))
+        or (hasattr(value, "shape") and (value.shape == () or value.shape == (1,)))
     ):
         raise ValueError(
-            "First value returned by the objective function must be a scalar (float, numpy scalar, or 0-d array)."
+            "First value returned by the objective function must be a scalar (float or 0-d array)."
         )
 
-    if not (isinstance(grad, np.ndarray) and grad.ndim == 1):
+    if not (hasattr(grad, "ndim") and grad.ndim == 1):
         raise ValueError(
-            "Second value returned by the objective function must be a 1d numpy array representing the gradient."
+            "Second value returned by the objective function must be a 1d array representing the gradient."
         )
 
     if hess is not None:
-        if not (isinstance(hess, np.ndarray) and hess.ndim == 2):
+        if not (hasattr(hess, "ndim") and hess.ndim == 2):
             raise ValueError(
-                "Third value returned by the objective function must be a 2d numpy array representing the Hessian."
+                "Third value returned by the objective function must be a 2d array representing the Hessian."
             )
 
     return ret_val
@@ -315,13 +314,13 @@ def check_f_is_fused_root(f, x0, args) -> bool:
             "Objective function should return either a 1d array or a two-tuple of (value, jacobian)."
         )
 
-    if not (isinstance(value, np.ndarray) and value.ndim == 1):
-        raise ValueError("First value returned by the objective function must be a 1d numpy array.")
+    if not (hasattr(value, "ndim") and value.ndim == 1):
+        raise ValueError("First value returned by the objective function must be a 1d array.")
 
     if jac is not None:
-        if not (isinstance(jac, np.ndarray) and jac.ndim == 2):
+        if not (hasattr(jac, "ndim") and jac.ndim == 2):
             raise ValueError(
-                "Second value returned by the objective function must be a 2d numpy array representing the Jacobian."
+                "Second value returned by the objective function must be a 2d array representing the Jacobian."
             )
 
     return ret_val
