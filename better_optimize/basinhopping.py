@@ -39,8 +39,8 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
     n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
 
     step_size = TextColumn("{task.fields[step_size]:0.3f}", table_column=Column("Step", ratio=1))
-    target_accept = TextColumn(
-        "{task.fields[target_accept]:0.3f}", table_column=Column("Target", ratio=1)
+    accept_rate = TextColumn(
+        "{task.fields[accept_rate]:0.3f}", table_column=Column("Accept Rate", ratio=1)
     )
 
     objective_name = "Objective"
@@ -48,7 +48,7 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
         "{task.fields[f_value]:0.5f}", table_column=Column(objective_name, ratio=1)
     )
 
-    columns = [name_column, bar_column, time_column, n_iters, step_size, target_accept, obj_column]
+    columns = [name_column, bar_column, time_column, n_iters, step_size, accept_rate, obj_column]
 
     if use_jac:
         columns += [
@@ -211,7 +211,7 @@ def basinhopping(
         description="Basinhopping",
         name="Basinhopping",
         total=niter,
-        target_accept=target_accept_rate,
+        accept_rate=np.nan,
         step_size=stepsize,
         f_value=0.0,
         grad_norm=0.0,
@@ -227,7 +227,7 @@ def basinhopping(
         description="Minimize",
         name="Minimize",
         step_size=0.0,
-        target_accept=0.0,
+        accept_rate=0.0,
         f_value=0.0,
         grad_norm=0.0,
         hess_norm=0.0,
@@ -321,7 +321,7 @@ def basinhopping(
         bh_task,
         advance=1,
         step_size=take_step_wrapped.takestep.stepsize,
-        target_accept=take_step_wrapped.target_accept_rate,
+        accept_rate=np.nan,
         f_value=bh.storage.get_lowest().fun,
         grad_norm=grad_norm_at_min,
     )
@@ -338,7 +338,7 @@ def basinhopping(
                 bh_task,
                 advance=1,
                 step_size=take_step_wrapped.takestep.stepsize,
-                target_accept=take_step_wrapped.target_accept_rate,
+                accept_rate=float(take_step_wrapped.naccept) / take_step_wrapped.nstep,
                 f_value=bh.storage.get_lowest().fun,
                 grad_norm=grad_norm_at_min,
             )
