@@ -221,7 +221,12 @@ def basinhopping(
     n_vars = x0.size if hasattr(x0, "size") else len(x0)
     if "options" not in minimizer_kwargs:
         minimizer_kwargs["options"] = {}
+
     minimizer_maxiter, minimizer_kwargs = determine_maxiter(minimizer_kwargs, method, n_vars)
+
+    # determine_maxiter pops the maxiters out of minimizer_kwargs, but we still need it in there for later, so we
+    # put it back in.
+    minimizer_kwargs["maxiter"] = minimizer_maxiter
 
     minimize_task = progress.add_task(
         description="Minimize",
