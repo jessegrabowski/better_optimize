@@ -194,21 +194,34 @@ MINIMIZE_MODE_KWARGS = {
         "uses_hess": True,
         "uses_hessp": True,
         "f_maxiter_default": lambda n: 200 * n,
-        "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol"],
+        "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol", "workers"],
     },
     "trust-exact": {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": False,
         "f_maxiter_default": lambda n: 200 * n,
-        "valid_options": ["initial_trust_radius", "max_trust_radius", "eta", "gtol"],
+        "valid_options": [
+            "initial_trust_radius",
+            "max_trust_radius",
+            "eta",
+            "gtol",
+            "subproblem_maxiter",
+        ],
     },
     "trust-krylov": {
         "uses_grad": True,
         "uses_hess": True,
         "uses_hessp": True,
         "f_maxiter_default": lambda n: 200 * n,
-        "valid_options": ["inexact"],
+        "valid_options": [
+            "inexact",
+            "initial_trust_radius",
+            "max_trust_radius",
+            "eta",
+            "gtol",
+            "workers",
+        ],
     },
 }
 
