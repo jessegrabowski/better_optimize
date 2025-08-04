@@ -165,9 +165,23 @@ def test_determine_tolerance(method: minimize_method):
 
     expected_options = sorted(MINIMIZE_MODE_KWARGS[method]["valid_options"])
 
-    # trust-constr docstring is really messy, just skip
-    if method != "trust-constr":
-        assert all(x in all_options for x in expected_options)
+    # This sucks, but the scipy docstrings are not very consistent and some options are not documented. I hardcode the
+    # missing options here
+    undocumented_options = {
+        "trust-ncg": {"workers"},
+        "trust-krylov": {"workers", "eta", "max_trust_radius", "initial_trust_radius", "gtol"},
+        "trust-exact": {"subproblem_maxiter"},
+        "trust-constr": {
+            "initial_barrier_parameter",
+            "initial_tr_radius",
+            "initial_barrier_tolerance",
+        },
+    }
+
+    missing_options = (
+        set(expected_options) - set(all_options) - set(undocumented_options.get(method, []))
+    )
+    assert not missing_options, "missing options: " + ", ".join(missing_options)
 
     expected_tols = [x for x in expected_options if x in TOLERANCES]
     assert all(options[tol] == 1e-8 for tol in expected_tols)
