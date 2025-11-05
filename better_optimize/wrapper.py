@@ -122,10 +122,10 @@ class ObjectiveWrapper:
         if not self.progressbar:
             return
 
-        if isinstance(value, np.ndarray):
-            value = (value**2).sum()
-        elif isinstance(value, list | tuple):
+        if isinstance(value, list | tuple):
             value = sum([x**2 for x in value])
+        else:
+            value = (value**2).sum()
 
         value_dict = {"f_value": value}
         if grad is not None:
