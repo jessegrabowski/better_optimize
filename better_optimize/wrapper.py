@@ -122,10 +122,15 @@ class ObjectiveWrapper:
         if not self.progressbar:
             return
 
-        if isinstance(value, list | tuple):
-            value = sum([x**2 for x in value])
+        value = np.asarray(value)
+        if self.root:
+            value = np.linalg.norm(value)
+        elif value.size != 1:
+            raise ValueError(
+                f"Objective function must return a scalar value for minimization, got {value.shape}"
+            )
         else:
-            value = (value**2).sum()
+            value = value.item()
 
         value_dict = {"f_value": value}
         if grad is not None:
