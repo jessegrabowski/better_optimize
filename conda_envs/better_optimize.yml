@@ -9,4 +9,6 @@ dependencies:
   - pytest
   - pytest-cov
   - pre-commit
-  - jax
+  - pip
+  - pip:
+    - jax
