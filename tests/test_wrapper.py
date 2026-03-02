@@ -7,6 +7,7 @@ from functools import partial
 
 import numpy as np
 import pytest
+import scipy.sparse as sp
 
 from scipy.optimize import minimize as scipy_minimize
 from scipy.optimize import root as scipy_root
@@ -66,3 +67,32 @@ def test_execption_breaks_optimization(root, monkeypatch):
     # Non-KeyboardInterrupt exceptions should break execution.
     with pytest.raises(Exception, match="Simulated error"):
         optimizer_early_stopping_wrapper(f_optim)
+
+
+def func2(x, a, b):
+    f = [a * x[0] * np.cos(x[1]) - 4, x[1] * x[0] - b * x[1] - 5]
+
+    return np.array(f)
+
+
+def func2_sparse_jac(x, a, b):
+    df = np.array([[a * np.cos(x[1]), -a * x[0] * np.sin(x[1])], [x[1], x[0] - b]])
+    return sp.csr_matrix(df)
+
+
+def test_wrapper_compatible_with_sparse_outputs():
+    x0 = np.array([0.8, 0.8])
+
+    objective = ObjectiveWrapper(
+        f=partial(func2, a=1, b=1),
+        jac=partial(func2_sparse_jac, a=1, b=1),
+        maxeval=100,
+        progressbar=True,
+        root=True,
+    )
+
+    with objective.progress:
+        result = objective(x0)
+
+    value, grad = result
+    assert sp.issparse(grad)

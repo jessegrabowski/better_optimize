@@ -4,6 +4,7 @@ from collections.abc import Callable
 from functools import partial
 
 import numpy as np
+import scipy.sparse as sp
 
 from rich.console import Console
 from rich.progress import (
@@ -134,10 +135,16 @@ class ObjectiveWrapper:
 
         value_dict = {"f_value": value}
         if grad is not None:
-            grad_norm = np.linalg.norm(grad)
+            if sp.issparse(grad):
+                grad_norm = sp.linalg.norm(grad)
+            else:
+                grad_norm = np.linalg.norm(grad)
             value_dict["grad_norm"] = grad_norm
         if hess is not None:
-            hess_norm = np.linalg.norm(hess)
+            if sp.issparse(hess):
+                hess_norm = sp.linalg.norm(hess)
+            else:
+                hess_norm = np.linalg.norm(hess)
             value_dict["hess_norm"] = hess_norm
 
         if self.n_eval == 0 and self.task is None:
