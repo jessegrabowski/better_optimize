@@ -21,6 +21,7 @@ from scipy.optimize._basinhopping import (
     check_random_state,
 )
 
+from better_optimize.constants import CONSOLE_WIDTH
 from better_optimize.minimize import minimize
 from better_optimize.utilities import (
     LRUCache1,
@@ -60,7 +61,11 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
         ]
 
     return ToggleableProgress(
-        *columns, expand=False, disable=not progressbar, console=Console(width=100), transient=True
+        *columns,
+        expand=False,
+        disable=not progressbar,
+        console=Console(width=CONSOLE_WIDTH),
+        transient=True,
     )
 
 

@@ -6,6 +6,9 @@ dependencies:
   - numpy
   - scipy>=1.15
   - rich
+  - threadpoolctl
+  - joblib
+  - pandas
   - pytest
   - pytest-cov
   - pre-commit

@@ -15,4 +15,4 @@ if not logging.root.handlers:
 
 
 __version__ = get_versions()["version"]
-__all__ = ["minimize", "root", "basinhopping"]
+__all__ = ["minimize", "root", "basinhopping", "MultiStart", "MultiStartResult"]

@@ -18,6 +18,7 @@ from rich.progress import (
 from rich.table import Column
 from scipy.optimize import OptimizeResult
 
+from better_optimize.constants import CONSOLE_WIDTH
 from better_optimize.utilities import ToggleableProgress
 
 _log = logging.getLogger(__name__)
@@ -185,7 +186,10 @@ class ObjectiveWrapper:
             ]
 
         return ToggleableProgress(
-            *columns, expand=False, disable=not self.progressbar, console=Console(width=100)
+            *columns,
+            expand=False,
+            disable=not self.progressbar,
+            console=Console(width=CONSOLE_WIDTH),
         )
 
 
