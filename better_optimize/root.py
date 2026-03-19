@@ -3,6 +3,7 @@ from functools import partial
 
 import numpy as np
 
+from rich.progress import Progress, TaskID
 from scipy.optimize import OptimizeResult
 from scipy.optimize import root as sp_root
 
@@ -24,7 +25,8 @@ def root(
     x0: np.ndarray,
     method: root_method,
     jac: Callable[..., np.ndarray] | None = None,
-    progressbar: bool = True,
+    progressbar: bool | Progress = True,
+    progress_task: TaskID | None = None,
     progressbar_update_interval: int = 1,
     verbose: bool = False,
     args: tuple | None = None,
@@ -88,6 +90,7 @@ def root(
         progressbar_update_interval=progressbar_update_interval,
         has_fused_f_and_grad=has_fused_f_and_grad,
         root=True,
+        task=progress_task,
     )
 
     f_optim = partial(

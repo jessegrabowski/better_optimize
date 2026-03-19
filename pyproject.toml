@@ -29,6 +29,9 @@ dependencies = [
   'numpy',
   'scipy>=1.15',
   'rich',
+  'threadpoolctl',
+  'joblib',
+  'pandas'
 ]
 
 [project.optional-dependencies]
