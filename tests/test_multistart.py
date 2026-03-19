@@ -13,7 +13,7 @@ from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult
 
 from better_optimize.minimize import minimize
-from better_optimize.multistart import (
+from better_optimize.multi_optimize import (
     MultiStartResult,
     ProgressProxy,
     _drain_progress_queue,

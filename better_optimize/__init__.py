@@ -3,7 +3,7 @@ import logging
 from better_optimize._version import get_versions
 from better_optimize.basinhopping import basinhopping
 from better_optimize.minimize import minimize
-from better_optimize.multistart import multi_optimize
+from better_optimize.multi_optimize import multi_optimize
 from better_optimize.root import root
 
 _log = logging.getLogger(__name__)
