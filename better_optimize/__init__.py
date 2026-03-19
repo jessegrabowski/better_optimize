@@ -3,6 +3,7 @@ import logging
 from better_optimize._version import get_versions
 from better_optimize.basinhopping import basinhopping
 from better_optimize.minimize import minimize
+from better_optimize.multistart import multi_optimize
 from better_optimize.root import root
 
 _log = logging.getLogger(__name__)
@@ -15,4 +16,4 @@ if not logging.root.handlers:
 
 
 __version__ = get_versions()["version"]
-__all__ = ["minimize", "root", "basinhopping", "MultiStart", "MultiStartResult"]
+__all__ = ["minimize", "root", "basinhopping", "multi_optimize"]

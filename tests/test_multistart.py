@@ -14,13 +14,14 @@ from scipy.optimize import OptimizeResult
 
 from better_optimize.minimize import minimize
 from better_optimize.multistart import (
-    MultiStart,
     MultiStartResult,
     ProgressProxy,
     _drain_progress_queue,
     _is_pickle_error,
+    _MultiStart,
     _run_single,
     generate_starts,
+    multi_optimize,
     setup_blas_cores,
 )
 from better_optimize.root import root
@@ -420,18 +421,19 @@ class TestMultiStartResult:
 )
 def test_task_description_for_known_solvers(solver_name, expected_label):
     stub = MagicMock(__name__=solver_name)
-    ms = MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
+    ms = _MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
     assert ms._task_description == expected_label
 
 
 def test_task_description_falls_back_for_unknown_solver():
     stub = MagicMock(__name__="my_custom_opt")
-    ms = MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
+    ms = _MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
     assert ms._task_description == "My_Custom_Opt"
 
 
-def test_multistart_finds_rosenbrock_minimum():
-    result = MultiStart(
+@pytest.mark.parametrize("backend", ["sequential", "loky"])
+def test_multistart_finds_rosenbrock_minimum(backend):
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock, method="L-BFGS-B"),
         x0=np.zeros(3),
@@ -439,8 +441,11 @@ def test_multistart_finds_rosenbrock_minimum():
         init_strategy="uniform",
         bounds=(-2, 2),
         seed=7913,
+        backend=backend,
+        n_jobs=2,
         progressbar=False,
-    ).run()
+        blas_cores=None,
+    )
 
     assert len(result.results) == 8
     assert_allclose(result.x_best, np.ones(3), atol=1e-3)
@@ -449,12 +454,12 @@ def test_multistart_finds_rosenbrock_minimum():
 
 def test_multistart_with_explicit_starting_points():
     x0_list = [np.array([1.3, 0.7, 0.8]), np.array([0.5, 0.5, 0.5])]
-    result = MultiStart(
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock, method="L-BFGS-B"),
         x0=x0_list,
         progressbar=False,
-    ).run()
+    )
 
     assert len(result.results) == 2
     for result_i, expected_x0 in zip(result.results, x0_list):
@@ -462,7 +467,7 @@ def test_multistart_with_explicit_starting_points():
 
 
 def test_multistart_with_root_solver():
-    result = MultiStart(
+    result = multi_optimize(
         solver=root,
         solver_kwargs=dict(f=simple_system, method="hybr"),
         sort_key=lambda res: float(np.linalg.norm(res.fun)),
@@ -472,25 +477,25 @@ def test_multistart_with_root_solver():
         init_scale=2.0,
         seed=9173,
         progressbar=False,
-    ).run()
+    )
 
     assert result.fun_best < 1e-6
 
 
 def test_multistart_x0_list_ignores_n_runs():
-    result = MultiStart(
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock, method="nelder-mead"),
         x0=[np.zeros(2), np.ones(2)],
         n_runs=999,
         progressbar=False,
-    ).run()
+    )
 
     assert len(result.results) == 2
 
 
 def test_multistart_with_fused_objective():
-    result = MultiStart(
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock_fused, method="L-BFGS-B"),
         x0=np.zeros(3),
@@ -499,7 +504,7 @@ def test_multistart_with_fused_objective():
         bounds=(-2, 2),
         seed=3917,
         progressbar=False,
-    ).run()
+    )
 
     assert_allclose(result.x_best, np.ones(3), atol=1e-3)
 
@@ -513,14 +518,14 @@ def test_multistart_pickle_fallback(caplog):
         return OptimizeResult(x=x0, fun=float(np.sum(x0**2)), success=True)
 
     with caplog.at_level("WARNING", logger="better_optimize.multistart"):
-        result = MultiStart(
+        result = multi_optimize(
             solver=solver_with_closure,
             x0=[np.zeros(2), np.ones(2)],
             backend="loky",
             n_jobs=2,
             progressbar=False,
             blas_cores=None,
-        ).run()
+        )
 
     # Fallback may or may not trigger depending on environment,
     # but either way we must get valid results.

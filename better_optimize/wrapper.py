@@ -24,6 +24,47 @@ from better_optimize.utilities import ToggleableProgress
 _log = logging.getLogger(__name__)
 
 
+def build_progress_bar(
+    *,
+    description: str = "Minimizing",
+    progressbar: bool = True,
+    root: bool = False,
+    use_jac: bool = False,
+    use_hess: bool = False,
+) -> ToggleableProgress:
+    """Create a ``ToggleableProgress`` bar with columns matching the solver configuration.
+
+    Used by both :class:`ObjectiveWrapper` (standalone) and :class:`MultiStart` (shared bar).
+    """
+    bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=1))
+    time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
+    n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
+
+    objective_name = "Objective" if not root else "Residual"
+    obj_column = TextColumn(
+        "{task.fields[f_value]:0.8f}", table_column=Column(objective_name, ratio=1)
+    )
+
+    columns = [bar_column, time_column, n_iters, obj_column]
+
+    if use_jac:
+        grad_name = "||grad||" if not root else "||jac||"
+        columns.append(
+            TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column(grad_name, ratio=1))
+        )
+    if use_hess:
+        columns.append(
+            TextColumn("{task.fields[hess_norm]:0.8f}", table_column=Column("||hess||", ratio=1))
+        )
+
+    return ToggleableProgress(
+        *columns,
+        expand=False,
+        disable=not progressbar,
+        console=Console(width=CONSOLE_WIDTH),
+    )
+
+
 class ObjectiveWrapper:
     def __init__(
         self,
@@ -151,6 +192,9 @@ class ObjectiveWrapper:
         if self.n_eval == 0 and self.task is None:
             verb = "Minimizing" if not self.root else "Finding Roots"
             self.task = self.progress.add_task(verb, total=self.maxeval, refresh=True, **value_dict)
+        elif self.n_eval == 0:
+            # Task was pre-registered (e.g. by MultiStart) without a known total.
+            self.progress.update(self.task, total=self.maxeval, **value_dict)
 
         if not completed:
             self.progress.update(self.task, advance=self.update_every, **value_dict)
@@ -160,36 +204,13 @@ class ObjectiveWrapper:
             )
 
     def initialize_progress_bar(self):
-        # text_column = TextColumn("{task.description}", table_column=Column(ratio=1))
         description = "Minimizing" if not self.root else "Finding Roots"
-        bar_column = BarColumn(bar_width=None, table_column=Column(description, ratio=1))
-        time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
-        n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
-
-        objective_name = "Objective" if not self.root else "Residual"
-        obj_column = TextColumn(
-            "{task.fields[f_value]:0.8f}", table_column=Column(objective_name, ratio=1)
-        )
-
-        columns = [bar_column, time_column, n_iters, obj_column]
-
-        if self.use_jac:
-            grad_name = "||grad||" if not self.root else "||jac||"
-            columns += [
-                TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column(grad_name, ratio=1))
-            ]
-        if self.use_hess:
-            columns += [
-                TextColumn(
-                    "{task.fields[hess_norm]:0.8f}", table_column=Column("||hess||", ratio=1)
-                )
-            ]
-
-        return ToggleableProgress(
-            *columns,
-            expand=False,
-            disable=not self.progressbar,
-            console=Console(width=CONSOLE_WIDTH),
+        return build_progress_bar(
+            description=description,
+            progressbar=self.progressbar,
+            root=self.root,
+            use_jac=self.use_jac,
+            use_hess=self.use_hess,
         )
 
 
