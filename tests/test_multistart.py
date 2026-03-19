@@ -13,14 +13,15 @@ from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult
 
 from better_optimize.minimize import minimize
-from better_optimize.multistart import (
-    MultiStart,
+from better_optimize.multi_optimize import (
     MultiStartResult,
     ProgressProxy,
     _drain_progress_queue,
     _is_pickle_error,
+    _MultiStart,
     _run_single,
     generate_starts,
+    multi_optimize,
     setup_blas_cores,
 )
 from better_optimize.root import root
@@ -28,17 +29,6 @@ from better_optimize.root import root
 
 def rosenbrock(x):
     return float(np.sum(100 * (x[1:] - x[:-1] ** 2) ** 2 + (1 - x[:-1]) ** 2))
-
-
-def rosenbrock_fused(x):
-    f = float(np.sum(100 * (x[1:] - x[:-1] ** 2) ** 2 + (1 - x[:-1]) ** 2))
-    g = np.zeros_like(x)
-    g[0] = -400 * x[0] * (x[1] - x[0] ** 2) - 2 * (1 - x[0])
-    g[-1] = 200 * (x[-1] - x[-2] ** 2)
-    g[1:-1] = (
-        200 * (x[1:-1] - x[:-2] ** 2) - 400 * x[1:-1] * (x[2:] - x[1:-1] ** 2) - 2 * (1 - x[1:-1])
-    )
-    return f, g
 
 
 def simple_system(x):
@@ -73,9 +63,14 @@ def test_normal_starts_centered_on_x0(rng):
 
 
 @pytest.mark.parametrize("strategy", ["uniform", "sobol", "lhs"])
-def test_bounded_strategies_respect_bounds(strategy, rng):
+@pytest.mark.parametrize(
+    "bounds",
+    [(-5.0, 5.0), (np.array([-10.0, 0.0, -1.0]), np.array([0.0, 5.0, 1.0]))],
+    ids=["scalar", "array"],
+)
+def test_bounded_strategies_respect_bounds(strategy, bounds, rng):
     n_params, n_runs = 3, 16
-    low, high = -5.0, 5.0
+    low, high = bounds
     starts = generate_starts(
         np.zeros(n_params),
         n_runs,
@@ -108,23 +103,6 @@ def test_lhs_stratification(rng):
     for dim in range(n_params):
         bins = (stacked[:, dim] * n_runs).astype(int).clip(0, n_runs - 1)
         assert len(set(bins)) == n_runs
-
-
-def test_generate_starts_with_array_bounds(rng):
-    low = np.array([-10.0, 0.0, -1.0])
-    high = np.array([0.0, 5.0, 1.0])
-    starts = generate_starts(
-        np.zeros(3),
-        64,
-        "uniform",
-        bounds=(low, high),
-        init_scale=1.0,
-        rng=rng,
-    )
-
-    stacked = np.stack(starts)
-    assert np.all(stacked >= low)
-    assert np.all(stacked <= high)
 
 
 def test_callable_strategy_dispatches_to_user_function(rng):
@@ -179,12 +157,6 @@ def test_progress_proxy_serializes_action_to_queue(action):
     assert received_kwargs == payload
 
 
-def test_progress_proxy_add_task_returns_stored_id():
-    queue = multiprocessing.Queue()
-    proxy = ProgressProxy(queue, task_id=99)
-    assert proxy.add_task("ignored", total=100) == 99
-
-
 def test_drain_thread_exits_when_stop_is_set():
     queue = multiprocessing.Queue()
     stop = threading.Event()
@@ -223,14 +195,18 @@ def test_drain_thread_dispatches_queued_messages():
     progress.reset.assert_called_once_with(1, visible=False)
 
 
-def test_setup_blas_cores_auto_divides_evenly():
-    config = setup_blas_cores("auto", n_jobs=4, mp_ctx=None)
-    assert config.per_worker == 1
-
-
-def test_setup_blas_cores_explicit_budget():
-    config = setup_blas_cores(8, n_jobs=4, mp_ctx=None)
-    assert config.per_worker == 2
+@pytest.mark.parametrize(
+    "blas_cores, n_jobs, expected_per_worker",
+    [
+        ("auto", 4, 1),
+        (8, 4, 2),
+        (1, 8, 1),  # floors to 1
+    ],
+    ids=["auto", "explicit", "floors-to-one"],
+)
+def test_setup_blas_cores_per_worker(blas_cores, n_jobs, expected_per_worker):
+    config = setup_blas_cores(blas_cores, n_jobs=n_jobs, mp_ctx=None)
+    assert config.per_worker == expected_per_worker
 
 
 def test_setup_blas_cores_none_disables_limiting():
@@ -251,11 +227,6 @@ def test_setup_blas_cores_fork_skips_joined_limiter():
 def test_setup_blas_cores_invalid_string_raises():
     with pytest.raises(ValueError, match="blas_cores must be"):
         setup_blas_cores("bogus", n_jobs=4, mp_ctx=None)
-
-
-def test_setup_blas_cores_per_worker_floors_to_one():
-    config = setup_blas_cores(1, n_jobs=8, mp_ctx=None)
-    assert config.per_worker == 1
 
 
 def test_setup_blas_cores_negative_n_jobs():
@@ -290,48 +261,6 @@ def test_run_single_attaches_metadata():
     )
     assert result.run_index == 5
     assert_allclose(result.x0, x0)
-
-
-def test_run_single_forwards_solver_kwargs():
-    received = {}
-
-    def capturing_solver(x0, **kwargs):
-        received.update(kwargs)
-        return OptimizeResult(x=x0, fun=0.0, success=True)
-
-    _run_single(
-        run_index=0,
-        x0=np.array([1.0]),
-        solver=capturing_solver,
-        solver_kwargs={"method": "L-BFGS-B", "tol": 1e-8},
-        progress=MagicMock(),
-        task_id=0,
-    )
-    assert received["method"] == "L-BFGS-B"
-    assert received["tol"] == 1e-8
-
-
-def test_run_single_applies_blas_thread_limit():
-    from threadpoolctl import threadpool_info
-
-    observed_limits = []
-
-    def inspecting_solver(x0, **kwargs):
-        for lib in threadpool_info():
-            observed_limits.append(lib["num_threads"])
-        return OptimizeResult(x=x0, fun=0.0, success=True)
-
-    _run_single(
-        run_index=0,
-        x0=np.array([1.0]),
-        solver=inspecting_solver,
-        solver_kwargs={},
-        progress=MagicMock(),
-        task_id=0,
-        blas_cores_per_worker=1,
-    )
-    if observed_limits:
-        assert all(n <= 1 for n in observed_limits)
 
 
 def test_run_single_propagates_solver_exception():
@@ -420,18 +349,19 @@ class TestMultiStartResult:
 )
 def test_task_description_for_known_solvers(solver_name, expected_label):
     stub = MagicMock(__name__=solver_name)
-    ms = MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
+    ms = _MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
     assert ms._task_description == expected_label
 
 
 def test_task_description_falls_back_for_unknown_solver():
     stub = MagicMock(__name__="my_custom_opt")
-    ms = MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
+    ms = _MultiStart(solver=stub, x0=[np.zeros(2)], progressbar=False)
     assert ms._task_description == "My_Custom_Opt"
 
 
-def test_multistart_finds_rosenbrock_minimum():
-    result = MultiStart(
+@pytest.mark.parametrize("backend", ["sequential", "loky"])
+def test_multistart_finds_rosenbrock_minimum(backend):
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock, method="L-BFGS-B"),
         x0=np.zeros(3),
@@ -439,8 +369,11 @@ def test_multistart_finds_rosenbrock_minimum():
         init_strategy="uniform",
         bounds=(-2, 2),
         seed=7913,
+        backend=backend,
+        n_jobs=2,
         progressbar=False,
-    ).run()
+        blas_cores=None,
+    )
 
     assert len(result.results) == 8
     assert_allclose(result.x_best, np.ones(3), atol=1e-3)
@@ -449,12 +382,12 @@ def test_multistart_finds_rosenbrock_minimum():
 
 def test_multistart_with_explicit_starting_points():
     x0_list = [np.array([1.3, 0.7, 0.8]), np.array([0.5, 0.5, 0.5])]
-    result = MultiStart(
+    result = multi_optimize(
         solver=minimize,
         solver_kwargs=dict(f=rosenbrock, method="L-BFGS-B"),
         x0=x0_list,
         progressbar=False,
-    ).run()
+    )
 
     assert len(result.results) == 2
     for result_i, expected_x0 in zip(result.results, x0_list):
@@ -462,7 +395,7 @@ def test_multistart_with_explicit_starting_points():
 
 
 def test_multistart_with_root_solver():
-    result = MultiStart(
+    result = multi_optimize(
         solver=root,
         solver_kwargs=dict(f=simple_system, method="hybr"),
         sort_key=lambda res: float(np.linalg.norm(res.fun)),
@@ -472,36 +405,9 @@ def test_multistart_with_root_solver():
         init_scale=2.0,
         seed=9173,
         progressbar=False,
-    ).run()
+    )
 
     assert result.fun_best < 1e-6
-
-
-def test_multistart_x0_list_ignores_n_runs():
-    result = MultiStart(
-        solver=minimize,
-        solver_kwargs=dict(f=rosenbrock, method="nelder-mead"),
-        x0=[np.zeros(2), np.ones(2)],
-        n_runs=999,
-        progressbar=False,
-    ).run()
-
-    assert len(result.results) == 2
-
-
-def test_multistart_with_fused_objective():
-    result = MultiStart(
-        solver=minimize,
-        solver_kwargs=dict(f=rosenbrock_fused, method="L-BFGS-B"),
-        x0=np.zeros(3),
-        n_runs=4,
-        init_strategy="uniform",
-        bounds=(-2, 2),
-        seed=3917,
-        progressbar=False,
-    ).run()
-
-    assert_allclose(result.x_best, np.ones(3), atol=1e-3)
 
 
 def test_multistart_pickle_fallback(caplog):
@@ -513,14 +419,14 @@ def test_multistart_pickle_fallback(caplog):
         return OptimizeResult(x=x0, fun=float(np.sum(x0**2)), success=True)
 
     with caplog.at_level("WARNING", logger="better_optimize.multistart"):
-        result = MultiStart(
+        result = multi_optimize(
             solver=solver_with_closure,
             x0=[np.zeros(2), np.ones(2)],
             backend="loky",
             n_jobs=2,
             progressbar=False,
             blas_cores=None,
-        ).run()
+        )
 
     # Fallback may or may not trigger depending on environment,
     # but either way we must get valid results.

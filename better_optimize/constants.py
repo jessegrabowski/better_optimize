@@ -31,7 +31,7 @@ root_method = Literal[
 ]
 
 TOLERANCES = ["xtol", "ftol", "gtol", "fatol", "xatol"]
-CONSOLE_WIDTH = 120
+CONSOLE_WIDTH = 100
 
 MINIMIZE_MODE_KWARGS = {
     "nelder-mead": {

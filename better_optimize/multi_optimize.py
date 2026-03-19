@@ -12,14 +12,15 @@ import numpy as np
 import pandas as pd
 
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, TaskID, TextColumn, TimeElapsedColumn
-from rich.table import Column, Table
+from rich.progress import TaskID
+from rich.table import Table
 from scipy.optimize import OptimizeResult
 from scipy.stats import qmc
 from threadpoolctl import threadpool_limits
 
-from better_optimize.constants import CONSOLE_WIDTH
+from better_optimize.constants import MINIMIZE_MODE_KWARGS, ROOT_MODE_KWARGS
 from better_optimize.utilities import ToggleableProgress
+from better_optimize.wrapper import build_progress_bar
 
 _log = logging.getLogger(__name__)
 
@@ -268,41 +269,8 @@ class MultiStartResult:
         )
 
 
-class MultiStart:
-    """Run a solver from many starting points and collect the results.
-
-    Parameters
-    ----------
-    solver
-        Any callable with signature ``(x0, **kwargs) → OptimizeResult``.
-    x0
-        A single starting point (used as center for ``init_strategy``) or an explicit
-        list of starting points (in which case ``n_runs`` and ``init_strategy`` are ignored).
-    solver_kwargs
-        Forwarded verbatim to ``solver`` on every call.
-    sort_key
-        Function mapping an ``OptimizeResult`` to a float used for ranking.
-    n_runs
-        Number of random restarts.  Ignored when ``x0`` is a list.
-    init_strategy
-        How to generate starting points from ``x0``.
-    bounds
-        ``(low, high)`` arrays or scalars, used by bounded init strategies.
-    init_scale
-        Standard deviation for ``"normal"`` init strategy.
-    backend
-        ``"sequential"``, ``"loky"``, or ``"threading"``.
-    n_jobs
-        Number of parallel workers (``-1`` = all cores).
-    seed
-        Random seed for reproducible starting points.
-    progressbar
-        Whether to display per-run progress bars.
-    mp_ctx
-        Explicit ``multiprocessing`` context (``spawn`` / ``fork`` / ``forkserver``).
-    blas_cores
-        Total BLAS/OpenMP thread budget.  ``"auto"`` = ``n_jobs``, ``None`` = unlimited.
-    """
+class _MultiStart:
+    """Implementation behind :func:`multistart`. Not part of the public API."""
 
     def __init__(
         self,
@@ -384,7 +352,8 @@ class MultiStart:
         progress = self._build_progress()
         task_ids = self._register_tasks(progress)
 
-        queue: mp.Queue = mp.Queue()
+        manager = mp.Manager()
+        queue = manager.Queue()
         stop = threading.Event()
         listener = threading.Thread(
             target=_drain_progress_queue,
@@ -394,20 +363,23 @@ class MultiStart:
 
         with blas_config.limiter(), progress:
             listener.start()
-            results = Parallel(n_jobs=self._n_jobs, backend=self._backend)(
-                delayed(_run_single)(
-                    run_index=i,
-                    x0=x0_i,
-                    solver=self._solver,
-                    solver_kwargs=self._solver_kwargs,
-                    progress=ProgressProxy(queue, task_id),
-                    task_id=task_id,
-                    blas_cores_per_worker=blas_config.per_worker,
+            try:
+                results = Parallel(n_jobs=self._n_jobs, backend=self._backend)(
+                    delayed(_run_single)(
+                        run_index=i,
+                        x0=x0_i,
+                        solver=self._solver,
+                        solver_kwargs=self._solver_kwargs,
+                        progress=ProgressProxy(queue, task_id),
+                        task_id=task_id,
+                        blas_cores_per_worker=blas_config.per_worker,
+                    )
+                    for i, (x0_i, task_id) in enumerate(zip(self._starting_points, task_ids))
                 )
-                for i, (x0_i, task_id) in enumerate(zip(self._starting_points, task_ids))
-            )
-            stop.set()
-            listener.join(timeout=1.0)
+            finally:
+                stop.set()
+                listener.join(timeout=1.0)
+                manager.shutdown()
 
         return MultiStartResult(results=results, sort_key=self._sort_key)
 
@@ -422,31 +394,123 @@ class MultiStart:
         name = getattr(self._solver, "__name__", "")
         return self._SOLVER_LABELS.get(name, name.title() or "Optimizing")
 
+    @property
+    def _is_root(self) -> bool:
+        return getattr(self._solver, "__name__", "") == "root"
+
     def _build_progress(self) -> ToggleableProgress:
-        columns = [
-            BarColumn(bar_width=None, table_column=Column(self._task_description, ratio=2)),
-            TimeElapsedColumn(table_column=Column("Elapsed", ratio=1)),
-            MofNCompleteColumn(table_column=Column("Iteration")),
-            TextColumn("{task.fields[f_value]:0.8f}", table_column=Column("Objective", ratio=1)),
-            TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column("||grad||", ratio=1)),
-        ]
-        return ToggleableProgress(
-            *columns,
-            expand=False,
-            disable=not self._progressbar,
-            console=Console(width=CONSOLE_WIDTH),
+        method = self._solver_kwargs.get("method", "")
+
+        if self._is_root:
+            mode_info = ROOT_MODE_KWARGS.get(method, {})
+            use_jac = mode_info.get("uses_jac", False) or "jac" in self._solver_kwargs
+            use_hess = False
+        else:
+            mode_info = MINIMIZE_MODE_KWARGS.get(method, {})
+            use_jac = mode_info.get("uses_grad", False) or "jac" in self._solver_kwargs
+            use_hess = (
+                mode_info.get("uses_hess", False)
+                or "hess" in self._solver_kwargs
+                or "hessp" in self._solver_kwargs
+            )
+
+        return build_progress_bar(
+            description=self._task_description,
+            progressbar=self._progressbar,
+            root=self._is_root,
+            use_jac=use_jac,
+            use_hess=use_hess,
         )
 
     def _register_tasks(self, progress: ToggleableProgress) -> list[TaskID | None]:
+        # Include all possible fields so columns never hit a missing key.
+        # Unused fields (e.g. hess_norm when no hess column) are silently ignored.
         return [
             progress.add_task(
                 description=self._task_description,
                 total=None,
                 f_value=0.0,
                 grad_norm=0.0,
+                hess_norm=0.0,
             )
             for _ in self._starting_points
         ]
 
 
-__all__ = ["MultiStart", "MultiStartResult", "generate_starts"]
+def multi_optimize(
+    solver: Callable[..., OptimizeResult],
+    x0: np.ndarray | list[np.ndarray],
+    solver_kwargs: dict | None = None,
+    sort_key: Callable[[OptimizeResult], float] | None = None,
+    n_runs: int = 16,
+    init_strategy: InitStrategy = "normal",
+    bounds: tuple[np.ndarray, np.ndarray] | None = None,
+    init_scale: float = 1.0,
+    backend: Literal["sequential", "loky", "threading"] = "loky",
+    n_jobs: int = -1,
+    seed: int | None = None,
+    progressbar: bool = True,
+    mp_ctx: mp.context.BaseContext | None = None,
+    blas_cores: int | None | Literal["auto"] = "auto",
+) -> MultiStartResult:
+    """
+    Run a solver from many starting points and return the collected results.
+
+    Parameters
+    ----------
+    solver: Callable
+        Any solver with signature (x0, **kwargs) -> OptimizeResult, such as minimize or root
+    x0: np.ndarray or list of np.ndarray
+        A single starting point used as the center for init_strategy, or an explicit list of
+        starting points. When a list is provided, n_runs and init_strategy are ignored.
+    solver_kwargs: dict, optional
+        Keyword arguments forwarded verbatim to solver on every call
+    sort_key: Callable, optional
+        Function mapping an OptimizeResult to a float used for ranking. Defaults to
+        lambda res: res.fun, which ranks results by their optimized objective value.
+    n_runs: int
+        Number of random restarts. Ignored when x0 is a list.
+    init_strategy: str or Callable
+        How to generate starting points from x0. One of "uniform", "normal", "sobol", "lhs",
+        or a callable with signature (x0, n_runs, rng) → list of arrays.
+    bounds: tuple, optional
+        (low, high) arrays or scalars, required by bounded init strategies
+    init_scale: float
+        Standard deviation for the "normal" init strategy
+    backend: str
+        Execution backend. One of "sequential", "loky", or "threading".
+    n_jobs: int
+        Number of parallel workers. -1 means all cores.
+    seed: int, optional
+        Random seed for reproducible starting points
+    progressbar: bool
+        Whether to display per-run progress bars
+    mp_ctx: multiprocessing context, optional
+        Explicit multiprocessing context (spawn, fork, or forkserver)
+    blas_cores: int, str, or None
+        Total BLAS/OpenMP thread budget. "auto" splits evenly across workers, None is unlimited.
+
+    Returns
+    -------
+    result: MultiStartResult
+        Collected results with ranking, summary, and export utilities
+    """
+    return _MultiStart(
+        solver=solver,
+        x0=x0,
+        solver_kwargs=solver_kwargs,
+        sort_key=sort_key,
+        n_runs=n_runs,
+        init_strategy=init_strategy,
+        bounds=bounds,
+        init_scale=init_scale,
+        backend=backend,
+        n_jobs=n_jobs,
+        seed=seed,
+        progressbar=progressbar,
+        mp_ctx=mp_ctx,
+        blas_cores=blas_cores,
+    ).run()
+
+
+__all__ = ["multi_optimize", "MultiStartResult", "generate_starts"]

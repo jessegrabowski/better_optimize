@@ -117,6 +117,54 @@ Many sub-computations are repeated between the objective, gradient, and hessian 
 fused value_and_grad function, but `better_optimize` also lets you pass a triple-fused value_grad_and_hess function.
 This avoids redundant computation and speeds up the optimization process.
 
+### Parallel Optimization from Multiple Starting Points
+
+Real-world objectives often have multiple local minima. A common workaround is to throw many random starting points at
+the optimizer and keep the best result. `better_optimize` makes this painless with `multi_optimize`:
+
+```python
+from better_optimize import minimize, multi_optimize
+
+def rosenbrock(x):
+    return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+result = multi_optimize(
+    solver=minimize,
+    solver_kwargs=dict(f=rosenbrock, method="L-BFGS-B", tol=1e-10),
+    x0=np.zeros(5),
+    n_runs=16,
+    init_strategy="uniform",
+    bounds=(-5, 5),
+    backend="loky",
+    n_jobs=-1,
+    seed=42,
+    progressbar=True,
+)
+
+print(result.best)       # Best OptimizeResult
+print(result.x_best)     # Best parameter vector
+print(result.fun_best)   # Best objective value
+result.summary()          # Rich table of all runs, ranked
+```
+
+`multi_optimize` works with **any** solver that follows the `(x0, **kwargs) → OptimizeResult` signature — that includes
+`minimize`, `root`, `basinhopping`, or your own custom wrapper. It just calls `solver(x0=x0_i, **solver_kwargs)` for
+each starting point; it never inspects the solver internals.
+
+A few highlights:
+
+- **Initialization strategies** — `"uniform"`, `"normal"`, `"sobol"`, `"lhs"`, or pass your own callable. Bounded
+  strategies (`uniform`, `sobol`, `lhs`) require a `bounds` argument; `"normal"` perturbs around `x0` with a
+  configurable `init_scale`. Or just pass an explicit `list[np.ndarray]` as `x0` and skip the generation entirely.
+- **Parallel backends** — `"sequential"` (for debugging), `"loky"` (CPU-bound work, default), or `"threading"`
+  (GIL-releasing code). Under the hood this is `joblib`, so the usual `n_jobs=-1` convention works.
+- **BLAS thread control** — When many workers each spawn a full BLAS/OpenMP thread pool, you get noisy-neighbor
+  over-subscription. The `blas_cores` argument (default `"auto"`) caps the total thread budget so workers don't
+  fight over the same cores.
+
+The returned `MultiStartResult` gives you `best`, `top_k(k)`, `ranked()`, `success_rate`, a `summary()` table, and
+`to_dataframe()` for further analysis.
+
 
 ## Contributing
 
