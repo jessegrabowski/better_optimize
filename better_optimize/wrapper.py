@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from collections.abc import Callable
 from functools import partial
@@ -61,7 +62,7 @@ def build_progress_bar(
         *columns,
         expand=False,
         disable=not progressbar,
-        console=Console(width=CONSOLE_WIDTH),
+        console=Console(file=sys.stderr, width=CONSOLE_WIDTH),
     )
 
 

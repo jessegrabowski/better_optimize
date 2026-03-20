@@ -2,6 +2,7 @@ import contextlib
 import logging
 import multiprocessing as mp
 import pickle
+import sys
 import threading
 
 from collections.abc import Callable
@@ -249,7 +250,7 @@ class MultiStartResult:
 
         for rank, res in enumerate(display, 1):
             table.add_row(*self._format_result_row(rank, res))
-        Console().print(table)
+        Console(file=sys.stderr).print(table)
 
     def _result_to_dict(self, rank: int, res: OptimizeResult) -> dict:
         """Convert a single ``OptimizeResult`` into a flat dict for DataFrame export."""

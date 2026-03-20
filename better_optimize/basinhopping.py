@@ -1,3 +1,5 @@
+import sys
+
 from collections.abc import Callable, Sequence
 
 import numpy as np
@@ -64,7 +66,7 @@ def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
         *columns,
         expand=False,
         disable=not progressbar,
-        console=Console(width=CONSOLE_WIDTH),
+        console=Console(file=sys.stderr, width=CONSOLE_WIDTH),
         transient=True,
     )
 
