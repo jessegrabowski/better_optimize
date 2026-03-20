@@ -177,8 +177,22 @@ def _run_single(
         if blas_cores_per_worker is not None
         else contextlib.nullcontext()
     )
-    with limiter:
-        result = solver(x0=x0, progressbar=progress, progress_task=task_id, **solver_kwargs)
+    try:
+        with limiter:
+            result = solver(x0=x0, progressbar=progress, progress_task=task_id, **solver_kwargs)
+    except Exception as exc:
+        _log.warning(
+            "Run %d failed with %s: %s",
+            run_index,
+            type(exc).__name__,
+            exc,
+        )
+        result = OptimizeResult(
+            x=x0,
+            fun=np.inf,
+            success=False,
+            message=f"Solver raised {type(exc).__name__}: {exc}",
+        )
 
     result.run_index = run_index
     result.x0 = x0

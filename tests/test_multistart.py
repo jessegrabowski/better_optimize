@@ -263,19 +263,27 @@ def test_run_single_attaches_metadata():
     assert_allclose(result.x0, x0)
 
 
-def test_run_single_propagates_solver_exception():
-    def exploding_solver(x0, **kwargs):
-        raise RuntimeError("solver exploded")
+def test_run_single_catches_solver_exception():
+    """Solver exceptions are caught and returned as failed OptimizeResults."""
 
-    with pytest.raises(RuntimeError, match="solver exploded"):
-        _run_single(
-            run_index=0,
-            x0=np.zeros(2),
-            solver=exploding_solver,
-            solver_kwargs={},
-            progress=MagicMock(),
-            task_id=0,
-        )
+    def exploding_solver(x0, **kwargs):
+        raise RuntimeError("NaN encountered")
+
+    x0 = np.array([1.0, 2.0])
+    result = _run_single(
+        run_index=3,
+        x0=x0,
+        solver=exploding_solver,
+        solver_kwargs={},
+        progress=MagicMock(),
+        task_id=0,
+    )
+    assert not result.success
+    assert result.fun == np.inf
+    assert "RuntimeError" in result.message
+    assert result.run_index == 3
+    assert_allclose(result.x0, x0)
+    assert_allclose(result.x, x0)
 
 
 class TestMultiStartResult:
@@ -431,3 +439,34 @@ def test_multistart_pickle_fallback(caplog):
     # Fallback may or may not trigger depending on environment,
     # but either way we must get valid results.
     assert len(result.results) == 2
+
+
+def test_multistart_survives_crashing_solver():
+    """A solver that raises for some starting points should not kill the campaign."""
+    call_count = 0
+
+    def sometimes_exploding_solver(x0, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count % 2 == 0:
+            raise RuntimeError("NaN in trust region subproblem")
+        return OptimizeResult(x=x0, fun=float(np.sum(x0**2)), success=True)
+
+    x0_list = [np.ones(2) * i for i in range(4)]
+    result = multi_optimize(
+        solver=sometimes_exploding_solver,
+        x0=x0_list,
+        backend="sequential",
+        progressbar=False,
+        blas_cores=None,
+    )
+
+    assert len(result.results) == 4
+    n_success = sum(r.success for r in result.results)
+    n_failed = sum(not r.success for r in result.results)
+    assert n_success == 2
+    assert n_failed == 2
+    for r in result.results:
+        if not r.success:
+            assert r.fun == np.inf
+            assert "RuntimeError" in r.message

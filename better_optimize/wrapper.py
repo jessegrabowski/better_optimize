@@ -235,20 +235,40 @@ def optimizer_early_stopping_wrapper(f_optim: partial):
                 "prematurely.",
             )
         except Exception as e:
-            raise e
+            # Catch any runtime errors from the optimizer (e.g. nan/inf) and return a failed
+            # result instead of crashing.
+            _log.warning("Optimizer raised %s: %s", type(e).__name__, e)
+            final_value = objective.previous_x
+            x0 = f_optim.keywords.get("x0")
+            if final_value is None:
+                final_value = x0
+            res = OptimizeResult(
+                x=final_value,
+                fun=np.inf,
+                success=False,
+                message=f"Optimizer raised {type(e).__name__}: {e}",
+            )
 
-        outputs = objective.step(final_value)
+        # Guard against final_value being None (can happen if no finite
+        # iterate was ever recorded and no x0 was available).
+        if final_value is not None:
+            try:
+                outputs = objective.step(final_value)
 
-        if not objective.use_jac and not objective.use_hess:
-            value = outputs
-            grad = None
-            hess = None
-        elif objective.use_jac and not objective.use_hess:
-            value, grad = outputs
-            hess = None
-        else:
-            value, grad, hess = outputs
+                if not objective.use_jac and not objective.use_hess:
+                    value = outputs
+                    grad = None
+                    hess = None
+                elif objective.use_jac and not objective.use_hess:
+                    value, grad = outputs
+                    hess = None
+                else:
+                    value, grad, hess = outputs
 
-        objective.update_progressbar(value, grad, hess, completed=True)
+                objective.update_progressbar(value, grad, hess, completed=True)
+            except Exception:
+                # If the final evaluation itself fails (e.g. NaN inputs),
+                # just mark the progress bar as complete.
+                _log.debug("Final evaluation failed; skipping progress-bar update.", exc_info=True)
 
     return res

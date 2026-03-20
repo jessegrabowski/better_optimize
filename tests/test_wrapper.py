@@ -43,7 +43,8 @@ def test_early_return_from_keyboard_interrupt(root, method):
 
 
 @pytest.mark.parametrize("root", [True, False], ids=["root", "minimize"])
-def test_execption_breaks_optimization(root, monkeypatch):
+def test_exception_returns_failed_result(root, monkeypatch):
+    """Exceptions raised inside the optimizer should be caught and returned as a failed result."""
     N_EXEC = 0
 
     def f(x: np.ndarray):
@@ -64,9 +65,9 @@ def test_execption_breaks_optimization(root, monkeypatch):
         callback=objective.callback,
     )
 
-    # Non-KeyboardInterrupt exceptions should break execution.
-    with pytest.raises(Exception, match="Simulated error"):
-        optimizer_early_stopping_wrapper(f_optim)
+    result = optimizer_early_stopping_wrapper(f_optim)
+    assert not result.success
+    assert "Simulated error" in result.message
 
 
 def func2(x, a, b):
