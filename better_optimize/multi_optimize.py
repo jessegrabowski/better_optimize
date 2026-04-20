@@ -423,11 +423,7 @@ class _MultiStart:
         else:
             mode_info = MINIMIZE_MODE_KWARGS.get(method, {})
             use_jac = mode_info.get("uses_grad", False) or "jac" in self._solver_kwargs
-            use_hess = (
-                mode_info.get("uses_hess", False)
-                or "hess" in self._solver_kwargs
-                or "hessp" in self._solver_kwargs
-            )
+            use_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
 
         return build_progress_bar(
             description=self._task_description,
