@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = 'better_optimize'
 dynamic = ['version']
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 description = "A drop-in replacement for scipy optimize functions with quality of life improvements"
 readme = "README.md"
 license = {text = "MIT License"}
@@ -70,7 +70,7 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 extend-exclude = ["better_optimize/_version.py", "setup.py"]
 
 [tool.ruff.lint]
