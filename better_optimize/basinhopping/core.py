@@ -1,103 +1,25 @@
-import sys
-
 from collections.abc import Callable, Sequence
 
 import numpy as np
 
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
-from rich.table import Column
 from scipy.optimize import OptimizeResult
 from scipy.optimize._basinhopping import (
     AdaptiveStepsize,
-    BasinHoppingRunner,
     Metropolis,
     MinimizerWrapper,
     RandomDisplacement,
-    Storage,
     check_random_state,
 )
 
-from better_optimize.constants import CONSOLE_WIDTH
+from better_optimize.basinhopping.progress import initialize_progress_bar
+from better_optimize.basinhopping.runner import AllowFailureBasinHoppingRunner
 from better_optimize.minimize import minimize
 from better_optimize.utilities import (
     LRUCache1,
-    ToggleableProgress,
     check_f_is_fused_minimize,
     determine_maxiter,
     validate_provided_functions_minimize,
 )
-
-
-def initialize_progress_bar(progressbar, use_jac=True, use_hess=False):
-    description = "Process"
-    name_column = TextColumn("{task.fields[name]}", table_column=Column(description, ratio=2))
-    bar_column = BarColumn(bar_width=None, table_column=Column("", ratio=2))
-    time_column = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
-    n_iters = MofNCompleteColumn(table_column=Column("Iteration"))
-
-    step_size = TextColumn("{task.fields[step_size]:0.3f}", table_column=Column("Step", ratio=1))
-    accept_rate = TextColumn(
-        "{task.fields[accept_rate]:0.3f}", table_column=Column("Accept Rate", ratio=1)
-    )
-
-    objective_name = "Objective"
-    obj_column = TextColumn(
-        "{task.fields[f_value]:0.5f}", table_column=Column(objective_name, ratio=1)
-    )
-
-    columns = [name_column, bar_column, time_column, n_iters, step_size, accept_rate, obj_column]
-
-    if use_jac:
-        columns += [
-            TextColumn("{task.fields[grad_norm]:0.5f}", table_column=Column("||grad||", ratio=1))
-        ]
-    if use_hess:
-        columns += [
-            TextColumn("{task.fields[hess_norm]:0.8f}", table_column=Column("||hess||", ratio=1))
-        ]
-
-    return ToggleableProgress(
-        *columns,
-        expand=False,
-        disable=not progressbar,
-        console=Console(file=sys.stderr, width=CONSOLE_WIDTH),
-        transient=True,
-    )
-
-
-class AllowFailureStorage(Storage):
-    """
-    Subclass of Storage that allows the minimizer to fail, but still updates the global minimum
-    if the new point is better than the current global minimum.
-    """
-
-    def update(self, minres):
-        if minres.fun < self.minres.fun:
-            self._add(minres)
-            return True
-        else:
-            return False
-
-
-class AllowFailureBasinHoppingRunner(BasinHoppingRunner):
-    """
-    A subclass of BasinHoppingRunner that allows the minimizer to fail, but still updates the
-    global minimum if the new point is better than the current global minimum.
-    """
-
-    def __init__(
-        self, x0, minimizer, step_taking, accept_tests, accept_on_minimizer_fail=False, disp=False
-    ):
-        super().__init__(x0, minimizer, step_taking, accept_tests, disp=disp)
-
-        if accept_on_minimizer_fail:
-            self.storage = AllowFailureStorage(self.storage.minres)
 
 
 def basinhopping(
@@ -281,7 +203,6 @@ def basinhopping(
         else:
             take_step_wrapped = take_step
     else:
-        # use default
         displace = RandomDisplacement(stepsize=stepsize, rng=rng)
         take_step_wrapped = AdaptiveStepsize(
             displace,
