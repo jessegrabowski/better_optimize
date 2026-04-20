@@ -49,7 +49,7 @@ def build_progress_bar(
     columns = [bar_column, time_column, n_iters, obj_column]
 
     if use_jac:
-        grad_name = "||grad||" if not root else "||jac||"
+        grad_name = "||grad||" if not root else "||Jᵀf||"
         columns.append(
             TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column(grad_name, ratio=1))
         )
@@ -195,15 +195,22 @@ class ObjectiveWrapper:
         if not self.progressbar:
             return
 
-        value = np.asarray(value)
+        value_raw = np.asarray(value)
         if self.root:
-            value = np.linalg.norm(value)
-        elif value.size != 1:
+            # Replace the Jacobian with the merit-function gradient Jᵀf. This is
+            # the gradient of ½||f||² and drives to zero at a regular root;
+            # ||Jᵀf|| decoupling from ||f|| flags stuck-at-stationary-point.
+            if grad is not None:
+                grad = grad.T @ value_raw
+                if sp.issparse(grad):
+                    grad = np.asarray(grad.todense()).ravel()
+            value = float(np.linalg.norm(value_raw))
+        elif value_raw.size != 1:
             raise ValueError(
-                f"Objective function must return a scalar value for minimization, got {value.shape}"
+                f"Objective function must return a scalar value for minimization, got {value_raw.shape}"
             )
         else:
-            value = value.item()
+            value = value_raw.item()
 
         value_dict = {"f_value": value}
         if grad is not None:
