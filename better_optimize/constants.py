@@ -33,6 +33,23 @@ root_method = Literal[
 TOLERANCES = ["xtol", "ftol", "gtol", "fatol", "xatol"]
 CONSOLE_WIDTH = 100
 
+DE_STRATEGY_OPTIONS = (
+    "best1bin",
+    "best1exp",
+    "rand1bin",
+    "rand1exp",
+    "randtobest1bin",
+    "randtobest1exp",
+    "currenttobest1bin",
+    "currenttobest1exp",
+    "best2bin",
+    "best2exp",
+    "rand2bin",
+    "rand2exp",
+)
+
+DE_INIT_OPTIONS = ("sobol", "halton", "latinhypercube", "random")
+
 MINIMIZE_MODE_KWARGS = {
     "nelder-mead": {
         "uses_grad": False,
