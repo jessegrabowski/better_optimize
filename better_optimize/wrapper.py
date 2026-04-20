@@ -31,7 +31,7 @@ def build_progress_bar(
     progressbar: bool = True,
     root: bool = False,
     use_jac: bool = False,
-    use_hess: bool = False,
+    use_rayleigh: bool = False,
 ) -> ToggleableProgress:
     """Create a ``ToggleableProgress`` bar with columns matching the solver configuration.
 
@@ -53,9 +53,12 @@ def build_progress_bar(
         columns.append(
             TextColumn("{task.fields[grad_norm]:0.8f}", table_column=Column(grad_name, ratio=1))
         )
-    if use_hess:
+    if use_rayleigh:
         columns.append(
-            TextColumn("{task.fields[hess_norm]:0.8f}", table_column=Column("||hess||", ratio=1))
+            TextColumn(
+                "{task.fields[rayleigh]:+0.4e}",
+                table_column=Column("gᵀHg/|g|²", ratio=1),
+            )
         )
 
     return ToggleableProgress(
@@ -72,6 +75,7 @@ class ObjectiveWrapper:
         f: Callable[[np.ndarray | float, ...], float | np.ndarray | tuple[float, np.ndarray]],
         jac: Callable[[np.ndarray | float, ...], np.ndarray] | None = None,
         hess: Callable[[np.ndarray | float, ...], np.ndarray] | None = None,
+        hessp: Callable[[np.ndarray | float, np.ndarray, ...], np.ndarray] | None = None,
         has_fused_f_and_grad: bool = False,
         args: tuple | None = None,
         maxeval: int = 5000,
@@ -86,6 +90,7 @@ class ObjectiveWrapper:
         self.f = lambda x: f(x, *self.args)
         self.use_jac = False
         self.use_hess = False
+        self.use_hessp = False
         self.has_fused_f_and_grad = has_fused_f_and_grad
         self.root = root
 
@@ -103,6 +108,12 @@ class ObjectiveWrapper:
             self.use_hess = True
             self.f_hess = lambda x: hess(x, *self.args)
 
+        if hessp is not None:
+            self.use_hessp = True
+            self.f_hessp = lambda x, p: hessp(x, p, *self.args)
+
+        self.use_rayleigh = self.use_jac and (self.use_hess or self.use_hessp)
+
         self.previous_x = None
         if isinstance(progressbar, bool):
             self.progressbar = progressbar
@@ -114,6 +125,7 @@ class ObjectiveWrapper:
     def step(self, x):
         grad = None
         hess = None
+        rayleigh = None
         if self.has_fused_f_and_grad:
             value, grad = self.f(x)
         else:
@@ -123,15 +135,17 @@ class ObjectiveWrapper:
             grad = self.f_jac(x)
         if self.use_hess:
             hess = self.f_hess(x)
+        if self.use_rayleigh and grad is not None:
+            rayleigh = self._rayleigh_quotient(x, grad, hess)
 
         if np.all(np.isfinite(x)):
             self.previous_x = x
 
         if self.n_eval % self.update_every == 0:
-            self.update_progressbar(value, grad, hess)
+            self.update_progressbar(value, grad, rayleigh)
 
         if self.n_eval > self.maxeval:
-            self.update_progressbar(value, grad, hess)
+            self.update_progressbar(value, grad, rayleigh)
             self.interrupted = True
 
         self.n_eval += 1
@@ -142,6 +156,21 @@ class ObjectiveWrapper:
             return value, grad
         else:
             return value
+
+    def _rayleigh_quotient(self, x, grad, hess):
+        """Rayleigh quotient of H along the gradient: gᵀHg / ||g||².
+
+        Uses ``hess`` if already computed (free matvec), otherwise calls ``hessp``.
+        Returns ``None`` if the gradient is zero.
+        """
+        gg = float(grad @ grad)
+        if gg == 0.0:
+            return None
+
+        Hg = hess @ grad if hess is not None else self.f_hessp(x, grad)
+        if sp.issparse(Hg):
+            Hg = np.asarray(Hg.todense()).ravel()
+        return float(grad @ Hg) / gg
 
     def __call__(self, x):
         if self.root and self.interrupted:
@@ -161,7 +190,7 @@ class ObjectiveWrapper:
             raise StopIteration
 
     def update_progressbar(
-        self, value: float, grad: np.float64 = None, hess: np.float64 = None, completed=False
+        self, value: float, grad: np.float64 = None, rayleigh: float | None = None, completed=False
     ) -> None:
         if not self.progressbar:
             return
@@ -183,12 +212,8 @@ class ObjectiveWrapper:
             else:
                 grad_norm = np.linalg.norm(grad)
             value_dict["grad_norm"] = grad_norm
-        if hess is not None:
-            if sp.issparse(hess):
-                hess_norm = sp.linalg.norm(hess)
-            else:
-                hess_norm = np.linalg.norm(hess)
-            value_dict["hess_norm"] = hess_norm
+        if rayleigh is not None:
+            value_dict["rayleigh"] = rayleigh
 
         if self.n_eval == 0 and self.task is None:
             verb = "Minimizing" if not self.root else "Finding Roots"
@@ -211,7 +236,7 @@ class ObjectiveWrapper:
             progressbar=self.progressbar,
             root=self.root,
             use_jac=self.use_jac,
-            use_hess=self.use_hess,
+            use_rayleigh=self.use_rayleigh,
         )
 
 
@@ -258,14 +283,14 @@ def optimizer_early_stopping_wrapper(f_optim: partial):
                 if not objective.use_jac and not objective.use_hess:
                     value = outputs
                     grad = None
-                    hess = None
                 elif objective.use_jac and not objective.use_hess:
                     value, grad = outputs
-                    hess = None
                 else:
-                    value, grad, hess = outputs
+                    value, grad, _ = outputs
 
-                objective.update_progressbar(value, grad, hess, completed=True)
+                # step() already refreshed the rayleigh field for final_value;
+                # this call just marks the bar complete.
+                objective.update_progressbar(value, grad, completed=True)
             except Exception:
                 # If the final evaluation itself fails (e.g. NaN inputs),
                 # just mark the progress bar as complete.

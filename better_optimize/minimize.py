@@ -98,6 +98,7 @@ def minimize(
         f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
         jac=jac,
         hess=hess if use_hess else None,
+        hessp=hessp if use_hessp else None,
         args=args,
         progressbar=progressbar,
         progressbar_update_interval=progressbar_update_interval,
