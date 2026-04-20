@@ -129,9 +129,8 @@ def test_progress_global_gradient_updates_on_new_minimum(monkeypatch):
 
 
 def test_move_to_new_minimum_on_optimizer_failure(monkeypatch):
-    # Required, because otherwise monkeypatch can't find the *module* basinhopping; only the function
-    bh_module = importlib.import_module("better_optimize.basinhopping")
-    original_minimize = bh_module.minimize
+    bh_core = importlib.import_module("better_optimize.basinhopping.core")
+    original_minimize = bh_core.minimize
     original_storage_update = AllowFailureStorage.update
 
     global_minima = []
@@ -149,7 +148,7 @@ def test_move_to_new_minimum_on_optimizer_failure(monkeypatch):
             global_minima.append(minres.fun)
         return result
 
-    monkeypatch.setattr(bh_module, "minimize", mock_minimize)
+    monkeypatch.setattr(bh_core, "minimize", mock_minimize)
     monkeypatch.setattr(AllowFailureStorage, "update", mock_storage_update)
 
     basinhopping(
@@ -238,10 +237,10 @@ def test_basinhopping_fused_variants_cache(monkeypatch, fused_func, minimizer_kw
         cache_holder["cache"] = cache
         return cache
 
-    basinhopping_mod = importlib.import_module("better_optimize.basinhopping")
+    basinhopping_core = importlib.import_module("better_optimize.basinhopping.core")
 
     with monkeypatch.context() as c:
-        c.setattr(basinhopping_mod, "LRUCache1", accessible_LRUCache1)
+        c.setattr(basinhopping_core, "LRUCache1", accessible_LRUCache1)
         res = basinhopping(
             fused_func,
             x0=[1.0, 1.0],
