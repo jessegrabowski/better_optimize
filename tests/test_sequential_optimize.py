@@ -250,17 +250,17 @@ def test_nested_progress_bar(monkeypatch):
         _quadratic_fused,
         x0=np.array([1.0, 1.0]),
         stages=[
-            {"solver": minimize, "method": "L-BFGS-B", "jac": True, "progressbar": False},
-            {"solver": minimize, "method": "L-BFGS-B", "jac": True, "progressbar": False},
+            {"solver": minimize, "method": "L-BFGS-B", "jac": True},
+            {"solver": minimize, "method": "L-BFGS-B", "jac": True},
         ],
         progressbar=True,
     )
 
-    # Expect the outer "Sequential" task + 2 per-stage tasks registered against
-    # the same ToggleableProgress instance.
+    # Expect one pre-registered task per stage, labeled by method with .1/.2
+    # uniquification since both stages use L-BFGS-B.
     descriptions = [d for _, d, _ in updates]
-    assert "Sequential" in descriptions
-    assert descriptions.count("minimize") >= 2
+    assert "L-BFGS-B.1" in descriptions
+    assert "L-BFGS-B.2" in descriptions
 
 
 def test_empty_stages_raises():

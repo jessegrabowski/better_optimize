@@ -10,12 +10,12 @@ import numpy as np
 import pandas as pd
 
 from rich.console import Console
-from rich.progress import TaskID
-from rich.table import Table
+from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
+from rich.table import Column, Table
 from scipy.optimize import OptimizeResult
 
-from better_optimize.utilities import LRUCache1, check_f_is_fused_minimize
-from better_optimize.wrapper import build_progress_bar
+from better_optimize.constants import CONSOLE_WIDTH
+from better_optimize.utilities import LRUCache1, ToggleableProgress, check_f_is_fused_minimize
 
 _log = logging.getLogger(__name__)
 
@@ -110,6 +110,56 @@ def _accepts_kwarg(solver: Callable, name: str) -> bool:
     if name in params:
         return True
     return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def _build_sequential_progress(progressbar: bool) -> ToggleableProgress:
+    """Custom rich progress bar with a dedicated Stage column on the left.
+
+    Inner solvers' pre-registered tasks receive a descriptive label
+    (e.g. ``Nelder-Mead``, ``L-BFGS-B.2``, ``differential_evolution``) that
+    shows in the Stage column. Built locally because our standard
+    ``build_progress_bar`` doesn't include a description column.
+    """
+    name_col = TextColumn("{task.description}", table_column=Column("Stage", ratio=1))
+    bar_col = BarColumn(bar_width=None, table_column=Column("", ratio=2))
+    time_col = TimeElapsedColumn(table_column=Column("Elapsed", ratio=1))
+    iter_col = MofNCompleteColumn(table_column=Column("Iteration"))
+    obj_col = TextColumn("{task.fields[f_value]:0.6e}", table_column=Column("Objective", ratio=1))
+    grad_col = TextColumn("{task.fields[grad_norm]:0.2e}", table_column=Column("||grad||", ratio=1))
+    return ToggleableProgress(
+        name_col,
+        bar_col,
+        time_col,
+        iter_col,
+        obj_col,
+        grad_col,
+        expand=False,
+        disable=not progressbar,
+        console=Console(file=sys.stderr, width=CONSOLE_WIDTH),
+    )
+
+
+def _stage_label(stage: dict[str, Any], idx: int) -> str:
+    if stage.get("name"):
+        return str(stage["name"])
+    if stage.get("method"):
+        return str(stage["method"])
+    solver = stage["solver"]
+    return getattr(solver, "__name__", f"stage_{idx}")
+
+
+def _uniquify_labels(labels: list[str]) -> list[str]:
+    """Append ``.1``, ``.2``, ... suffixes to duplicated labels, preserving order."""
+    counts = {label: labels.count(label) for label in labels}
+    seen: dict[str, int] = {}
+    result = []
+    for label in labels:
+        if counts[label] == 1:
+            result.append(label)
+        else:
+            seen[label] = seen.get(label, 0) + 1
+            result.append(f"{label}.{seen[label]}")
+    return result
 
 
 def _objective_kwarg_name(solver: Callable) -> str:
@@ -248,33 +298,18 @@ def sequential_optimize(
         dtype=x0_arr.dtype if x0_arr is not None else None,
     )
 
-    progress = build_progress_bar(
-        description="Sequential",
-        progressbar=progressbar,
-        root=False,
-        use_jac=True,
-        use_hess=False,
-    )
-    outer_task = progress.add_task(
-        description="Sequential",
-        total=len(stages),
-        f_value=float("inf"),
-        grad_norm=0.0,
-        hess_norm=0.0,
-    )
-    stage_tasks: list[TaskID] = []
-    for i, stage in enumerate(stages):
-        solver = stage["solver"]
-        name = stage.get("name") or getattr(solver, "__name__", f"stage_{i}")
-        stage_tasks.append(
-            progress.add_task(
-                description=name,
-                total=None,
-                f_value=float("inf"),
-                grad_norm=0.0,
-                hess_norm=0.0,
-            )
+    progress = _build_sequential_progress(progressbar)
+    stage_labels = _uniquify_labels([_stage_label(s, i) for i, s in enumerate(stages)])
+    stage_tasks = [
+        progress.add_task(
+            description=stage_labels[i],
+            total=None,
+            f_value=float("inf"),
+            grad_norm=0.0,
+            hess_norm=0.0,
         )
+        for i in range(len(stages))
+    ]
 
     stage_results: list[OptimizeResult] = []
     best_res: OptimizeResult | None = None
@@ -353,11 +388,44 @@ def sequential_optimize(
             elif classification == "hard":
                 hard_failure_seen = True
 
-            progress.update(
-                outer_task,
-                advance=1,
-                f_value=best_fun if best_fun is not None else float("inf"),
-            )
+            # Force a complete final render for this stage's task. Inner solvers
+            # do set total/completed/grad_norm during their own wrap-up, but in
+            # Jupyter the nested `with progress:` teardown sometimes drops that
+            # final flush. Setting everything explicitly here makes the row
+            # consistent across terminal and notebook.
+            try:
+                final_f = float(res.fun)
+                if not np.isfinite(final_f):
+                    raise ValueError
+            except (TypeError, ValueError):
+                final_f = best_fun if best_fun is not None else float("inf")
+
+            nit_final = int(getattr(res, "nit", 0) or 0)
+            grad_attr = getattr(res, "jac", None)
+            if grad_attr is not None:
+                try:
+                    grad_norm_final = float(np.linalg.norm(np.asarray(grad_attr)))
+                except (TypeError, ValueError):
+                    grad_norm_final = 0.0
+            else:
+                grad_norm_final = 0.0
+
+            if nit_final > 0:
+                progress.update(
+                    stage_tasks[i],
+                    total=nit_final,
+                    completed=nit_final,
+                    f_value=final_f,
+                    grad_norm=grad_norm_final,
+                    refresh=True,
+                )
+            else:
+                progress.update(
+                    stage_tasks[i],
+                    f_value=final_f,
+                    grad_norm=grad_norm_final,
+                    refresh=True,
+                )
 
             if classification == "hard" and on_failure == "stop":
                 break
