@@ -419,30 +419,31 @@ class _MultiStart:
         if self._is_root:
             mode_info = ROOT_MODE_KWARGS.get(method, {})
             use_jac = mode_info.get("uses_jac", False) or "jac" in self._solver_kwargs
-            use_hess = False
+            use_rayleigh = False
         else:
             mode_info = MINIMIZE_MODE_KWARGS.get(method, {})
             use_jac = mode_info.get("uses_grad", False) or "jac" in self._solver_kwargs
-            use_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
+            has_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
+            use_rayleigh = use_jac and has_hess
 
         return build_progress_bar(
             description=self._task_description,
             progressbar=self._progressbar,
             root=self._is_root,
             use_jac=use_jac,
-            use_hess=use_hess,
+            use_rayleigh=use_rayleigh,
         )
 
     def _register_tasks(self, progress: ToggleableProgress) -> list[TaskID | None]:
         # Include all possible fields so columns never hit a missing key.
-        # Unused fields (e.g. hess_norm when no hess column) are silently ignored.
+        # Unused fields (e.g. rayleigh when no curvature column) are silently ignored.
         return [
             progress.add_task(
                 description=self._task_description,
                 total=None,
                 f_value=0.0,
                 grad_norm=0.0,
-                hess_norm=0.0,
+                rayleigh=0.0,
             )
             for _ in self._starting_points
         ]
