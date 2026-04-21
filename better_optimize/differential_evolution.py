@@ -171,7 +171,7 @@ def differential_evolution(
             best_fun_seen[0] = f_val
 
         iter_counter[0] += 1
-        progress.update(de_task, advance=1, f_value=best_fun_seen[0])
+        progress.update(de_task, advance=1, f_value=best_fun_seen[0], refresh=True)
 
         if callback is not None:
             user_stop = callback(xk, convergence=convergence)
