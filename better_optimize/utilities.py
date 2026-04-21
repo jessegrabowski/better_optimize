@@ -31,19 +31,31 @@ class ToggleableProgress(Progress):
 
     def __init__(self, *args, **kwargs):
         self.is_enabled = kwargs.get("disable", None) is not True
+        self._entry_depth = 0
         if self.is_enabled:
             super().__init__(*args, **kwargs)
 
     def __enter__(self):
-        """Enter the context manager."""
+        """Enter the context manager, refcounting nested entries.
+
+        When the same ``ToggleableProgress`` instance is entered multiple times
+        (e.g. ``sequential_optimize`` wrapping an inner ``minimize`` that also
+        does ``with progress:``), only the outermost enter starts rich's live
+        display and only the outermost exit stops it. This keeps the display
+        alive across stage boundaries so stage-end updates render.
+        """
         if self.is_enabled:
-            self.start()
+            if self._entry_depth == 0:
+                self.start()
+            self._entry_depth += 1
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Exit the context manager."""
+        """Exit the context manager; only the outermost exit tears down live."""
         if self.is_enabled:
-            super().__exit__(exc_type, exc_val, exc_tb)
+            self._entry_depth = max(0, self._entry_depth - 1)
+            if self._entry_depth == 0:
+                super().__exit__(exc_type, exc_val, exc_tb)
 
     def add_task(self, *args, **kwargs):
         if self.is_enabled:
