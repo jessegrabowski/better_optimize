@@ -127,7 +127,6 @@ def differential_evolution(
             progressbar=progressbar,
             root=False,
             use_jac=False,
-            use_hess=False,
         )
         owns_progress = True
     else:
