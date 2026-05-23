@@ -86,6 +86,11 @@ def differential_evolution(
         When ``sequential_optimize`` pre-registers a task on the shared progress and passes
         the id here, that task is updated instead of creating a new one. Ignored for
         standalone calls.
+    callback : Callable, optional
+        Function called once per generation as ``callback(res)``, where ``res`` is an
+        ``OptimizeResult`` carrying the current best ``res.x`` and ``res.fun``, plus ``res.nit`` and
+        ``res.convergence``. The return value is ignored; raise ``StopOptimization`` to stop early.
+        Default None.
     rng : int, numpy.random.Generator, or None
         Seed / generator for reproducibility. Forwarded to scipy as the ``rng`` kwarg.
 
@@ -173,9 +178,8 @@ def differential_evolution(
         progress.update(de_task, advance=1, f_value=best_fun_seen[0], refresh=True)
 
         if callback is not None:
-            user_stop = callback(xk, convergence=convergence)
-            if user_stop:
-                raise StopIteration("user callback returned True")
+            res = OptimizeResult(x=xk, fun=f_val, nit=iter_counter[0], convergence=convergence)
+            callback(res)  # return ignored; raise StopOptimization to stop early
         return False
 
     scipy_kwargs: dict[str, Any] = {
