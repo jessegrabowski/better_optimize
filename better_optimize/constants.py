@@ -50,6 +50,9 @@ DE_STRATEGY_OPTIONS = (
 
 DE_INIT_OPTIONS = ("sobol", "halton", "latinhypercube", "random")
 
+# SciPy's direct solvers ignore the callback argument; the iterative root finders honor it.
+ROOT_METHODS_WITHOUT_CALLBACK = frozenset({"hybr", "lm"})
+
 MINIMIZE_MODE_KWARGS = {
     "nelder-mead": {
         "uses_grad": False,

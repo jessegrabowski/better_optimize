@@ -9,10 +9,16 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from scipy.optimize import OptimizeResult
 from scipy.optimize import minimize as scipy_minimize
 from scipy.optimize import root as scipy_root
 
-from better_optimize.wrapper import ObjectiveWrapper, optimizer_early_stopping_wrapper
+from better_optimize import StopOptimization
+from better_optimize.wrapper import (
+    ObjectiveWrapper,
+    _compose_callback,
+    optimizer_early_stopping_wrapper,
+)
 
 
 @pytest.mark.parametrize(
@@ -68,6 +74,97 @@ def test_exception_returns_failed_result(root, monkeypatch):
     result = optimizer_early_stopping_wrapper(f_optim)
     assert not result.success
     assert "Simulated error" in result.message
+
+
+def test_compose_callback_passthrough_when_no_user_callback():
+    def internal(*args):
+        pass
+
+    assert _compose_callback(internal, lambda *a: None, None) is internal
+
+
+def test_compose_callback_runs_internal_then_passes_built_result():
+    order = []
+
+    def internal(*args):
+        order.append("internal")
+
+    def builder(*args):
+        order.append("builder")
+        return "RESULT"
+
+    received = []
+
+    def user(res):
+        order.append("user")
+        received.append(res)
+
+    composite = _compose_callback(internal, builder, user)
+    composite(np.array([1.0]))
+    assert order == ["internal", "builder", "user"]
+    assert received == ["RESULT"]
+
+
+def test_compose_callback_ignores_user_return_value():
+    # The user's return value is ignored; only a raised StopIteration stops.
+    composite = _compose_callback(lambda *a: None, lambda *a: "R", lambda res: 12345.0)
+    composite(np.array([1.0]))  # must not raise
+
+
+def test_compose_callback_internal_stop_skips_user():
+    def internal(*args):
+        raise StopIteration
+
+    def builder(*args):
+        raise AssertionError("builder must not run once internal has signalled a stop")
+
+    composite = _compose_callback(internal, builder, lambda res: None)
+    with pytest.raises(StopIteration):
+        composite(np.array([1.0]))
+
+
+def test_compose_callback_propagates_user_stopoptimization():
+    def user(res):
+        raise StopOptimization
+
+    # StopOptimization subclasses StopIteration, so it propagates for SciPy / the wrapper to catch.
+    composite = _compose_callback(lambda *a: None, lambda *a: "R", user)
+    with pytest.raises(StopIteration):
+        composite(np.array([1.0]))
+
+
+def test_callback_result_builds_uniform_result():
+    objective = ObjectiveWrapper(f=lambda x: float(np.sum(x**2)), progressbar=False)
+
+    res = objective.callback_result(np.array([3.0, 4.0]))
+    assert isinstance(res, OptimizeResult)
+    np.testing.assert_allclose(res.x, [3.0, 4.0])
+    assert res.fun == 25.0
+    assert res.nit == 1
+
+    # nit increments once per call.
+    res = objective.callback_result(np.array([1.0, 0.0]))
+    assert res.fun == 1.0
+    assert res.nit == 2
+
+
+def test_callback_result_includes_jac_for_fused_objective():
+    def fused(x):
+        return float(np.sum(x**2)), 2 * x
+
+    objective = ObjectiveWrapper(f=fused, has_fused_f_and_grad=True, progressbar=False)
+    res = objective.callback_result(np.array([3.0, 4.0]))
+    assert res.fun == 25.0
+    np.testing.assert_allclose(res.jac, [6.0, 8.0])
+
+
+def test_callback_result_root_fun_is_residual_vector():
+    objective = ObjectiveWrapper(f=lambda x: x, root=True, progressbar=False)
+    # SciPy's root callback passes (x, residual); fun should be the residual vector.
+    res = objective.callback_result(np.array([1.0, 2.0]), np.array([0.1, 0.2]))
+    np.testing.assert_allclose(res.x, [1.0, 2.0])
+    np.testing.assert_allclose(res.fun, [0.1, 0.2])
+    assert "jac" not in res
 
 
 def func2(x, a, b):

@@ -17,7 +17,11 @@ from better_optimize.utilities import (
     kwargs_to_options,
     validate_provided_functions_minimize,
 )
-from better_optimize.wrapper import ObjectiveWrapper, optimizer_early_stopping_wrapper
+from better_optimize.wrapper import (
+    ObjectiveWrapper,
+    _compose_callback,
+    optimizer_early_stopping_wrapper,
+)
 
 
 def minimize(
@@ -32,6 +36,7 @@ def minimize(
     progressbar_update_interval: int = 1,
     verbose: bool = False,
     args: tuple | None = None,
+    callback: Callable[..., bool | None] | None = None,
     **optimizer_kwargs,
 ) -> OptimizeResult:
     """
@@ -61,6 +66,11 @@ def minimize(
     verbose: bool
         If True, warnings about the provided configuration are displayed. These warnings are intended to help users
         understand potential configuration issues that may affect the optimization process, but can be safely ignored.
+    callback: Callable, optional
+        Function called after each iteration as ``callback(res)``, where ``res`` is an
+        ``OptimizeResult`` carrying the current ``res.x``, ``res.fun``, and ``res.nit`` (plus
+        ``res.jac`` when a gradient is available). The return value is ignored; raise
+        ``StopOptimization`` to stop early. Default None.
     optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
@@ -115,7 +125,7 @@ def minimize(
         jac=True if has_fused_f_and_grad or jac is not None else None,
         hess=None if not use_hess else lambda x: hess(x, *args),
         hessp=None if not use_hessp else lambda x, p: hessp(x, p, *args),
-        callback=objective.callback,
+        callback=_compose_callback(objective.callback, objective.callback_result, callback),
         **optimizer_kwargs,
     )
 

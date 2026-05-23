@@ -1,3 +1,5 @@
+import logging
+
 from collections.abc import Callable
 from functools import partial
 
@@ -7,7 +9,7 @@ from rich.progress import Progress, TaskID
 from scipy.optimize import OptimizeResult
 from scipy.optimize import root as sp_root
 
-from better_optimize.constants import root_method
+from better_optimize.constants import ROOT_METHODS_WITHOUT_CALLBACK, root_method
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_root,
@@ -17,7 +19,13 @@ from better_optimize.utilities import (
     kwargs_to_options,
     validate_provided_functions_root,
 )
-from better_optimize.wrapper import ObjectiveWrapper, optimizer_early_stopping_wrapper
+from better_optimize.wrapper import (
+    ObjectiveWrapper,
+    _compose_callback,
+    optimizer_early_stopping_wrapper,
+)
+
+_log = logging.getLogger(__name__)
 
 
 def root(
@@ -30,6 +38,7 @@ def root(
     progressbar_update_interval: int = 1,
     verbose: bool = False,
     args: tuple | None = None,
+    callback: Callable[..., bool | None] | None = None,
     **optimizer_kwargs,
 ) -> OptimizeResult:
     """
@@ -59,6 +68,11 @@ def root(
     verbose: bool
         If True, warnings about the provided configuration are displayed. These warnings are intended to help users
         understand potential configuration issues that may affect the optimization process, but can be safely ignored.
+    callback: Callable, optional
+        Function called after each iteration as ``callback(res)``, where ``res`` is an
+        ``OptimizeResult`` carrying the current ``res.x``, ``res.fun`` (the residual vector), and
+        ``res.nit``. The return value is ignored; raise ``StopOptimization`` to stop early. The
+        direct solvers ``hybr`` and ``lm`` ignore the callback and warn. Default None.
     optimizer_kwargs
         Additional keyword arguments to pass to the optimizer
 
@@ -93,12 +107,27 @@ def root(
         task=progress_task,
     )
 
+    if callback is not None and method in ROOT_METHODS_WITHOUT_CALLBACK:
+        _log.warning(
+            f"Method {method} does not support callbacks; the provided callback will be ignored."
+        )
+        callback = None
+
+    # Passing callback=None matches SciPy's default, so the direct methods never trigger SciPy's
+    # "does not accept callback" warning.
+    root_callback = (
+        _compose_callback(objective.callback, objective.callback_result, callback)
+        if callback is not None
+        else None
+    )
+
     f_optim = partial(
         sp_root,
         fun=objective,
         x0=x0,
         method=method,
         jac=True if has_fused_f_and_grad or jac is not None else None,
+        callback=root_callback,
         **optimizer_kwargs,
     )
 

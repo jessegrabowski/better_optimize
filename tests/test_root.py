@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from functools import partial
@@ -7,7 +8,9 @@ import numpy as np
 import pytest
 
 from numpy.testing import assert_allclose
+from scipy.optimize import OptimizeResult
 
+from better_optimize import StopOptimization
 from better_optimize.constants import root_method
 from better_optimize.root import root
 from better_optimize.utilities import LRUCache1
@@ -122,6 +125,63 @@ def test_root_fused_objective(method: root_method, monkeypatch):
     assert (cache.cache_hits + cache.cache_misses) > 0
     assert cache.value_and_grad_calls > 0
     assert cache.hess_calls == 0  # Hessian not used by root
+
+
+@pytest.mark.parametrize("method", ["broyden1", "df-sane"], ids=["broyden1", "df-sane"])
+def test_root_with_callback(method: root_method):
+    x0 = np.array([0.1])
+
+    seen = []
+    res = root(
+        partial(func, a=1, b=2),
+        x0,
+        method=method,
+        progressbar=False,
+        callback=lambda r: seen.append(r),
+    )
+
+    assert_allclose(res.x, [-1.029866529322393])
+    assert len(seen) > 0
+    # The callback receives the uniform OptimizeResult; for root, fun is the residual vector.
+    assert all(isinstance(r, OptimizeResult) for r in seen)
+    assert seen[-1].x.shape == x0.shape
+    assert np.asarray(seen[-1].fun).shape == x0.shape
+
+
+@pytest.mark.parametrize("method", ["hybr", "lm"], ids=["hybr", "lm"])
+def test_root_callback_ignored_for_direct_methods(method: root_method, caplog):
+    x0 = np.array([0.1])
+
+    n_calls = {"count": 0}
+
+    def callback(r):
+        n_calls["count"] += 1
+
+    with caplog.at_level(logging.WARNING, logger="better_optimize.root"):
+        res = root(partial(func, a=1, b=2), x0, method=method, progressbar=False, callback=callback)
+
+    assert_allclose(res.x, [-1.029866529322393])
+    # Direct methods ignore the callback, and the user is warned that it will not fire.
+    assert n_calls["count"] == 0
+    assert any("does not support callbacks" in record.message for record in caplog.records)
+
+
+def test_root_callback_early_stop_with_stopoptimization():
+    x0 = np.array([0.1])
+
+    n_calls = {"count": 0}
+
+    def stop_after_two(r):
+        n_calls["count"] += 1
+        if n_calls["count"] >= 2:
+            raise StopOptimization
+
+    res = root(
+        partial(func, a=1, b=2), x0, method="df-sane", progressbar=False, callback=stop_after_two
+    )
+
+    assert not res.success
+    assert n_calls["count"] == 2
 
 
 @pytest.mark.parametrize(
