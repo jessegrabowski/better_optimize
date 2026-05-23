@@ -265,7 +265,8 @@ def sequential_optimize(
         Initial guess for the first stage (unless the stage overrides via its own ``"x0"``).
     stages : list of dict
         Each dict must contain ``"solver": Callable`` and may include ``"name": str`` plus
-        any kwargs the solver accepts (e.g. ``"method"``, ``"bounds"``).
+        any kwargs the solver accepts (e.g. ``"method"``, ``"bounds"``, or a per-stage
+        ``"callback"`` forwarded to that stage's solver when it accepts one).
     args : tuple
         Extra positional args forwarded identically to every stage's objective call.
     progressbar : bool

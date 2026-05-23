@@ -476,7 +476,9 @@ def multi_optimize(
         A single starting point used as the center for init_strategy, or an explicit list of
         starting points. When a list is provided, n_runs and init_strategy are ignored.
     solver_kwargs: dict, optional
-        Keyword arguments forwarded verbatim to solver on every call
+        Keyword arguments forwarded verbatim to solver on every call. Pass a per-iteration callback here (e.g.
+        ``solver_kwargs={"callback": fn}``); it fires on every run, and under the ``loky`` backend that run is a
+        separate process, so the callback and anything it closes over must be picklable.
     sort_key: Callable, optional
         Function mapping an OptimizeResult to a float used for ranking. Defaults to
         lambda res: res.fun, which ranks results by their optimized objective value.
