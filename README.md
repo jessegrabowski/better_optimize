@@ -64,6 +64,7 @@ All optimization routines in `better_optimize` can display a rich, informative p
 ### Simple Example
 
 ```python
+import numpy as np
 from better_optimize import minimize
 
 def rosenbrock(x):
@@ -71,7 +72,7 @@ def rosenbrock(x):
 
 result = minimize(
     rosenbrock,
-    x0=[-1, 2],
+    x0=np.array([-1.0, 2.0]),
     method="L-BFGS-B",
     tol=1e-6,
     maxiter=1000,
@@ -123,6 +124,7 @@ Real-world objectives often have multiple local minima. A common workaround is t
 the optimizer and keep the best result. `better_optimize` makes this painless with `multi_optimize`:
 
 ```python
+import numpy as np
 from better_optimize import minimize, multi_optimize
 
 def rosenbrock(x):
@@ -146,6 +148,9 @@ print(result.x_best)     # Best parameter vector
 print(result.fun_best)   # Best objective value
 result.summary()          # Rich table of all runs, ranked
 ```
+
+> The `loky` (process) backend needs an `if __name__ == "__main__":` guard when run as a script on macOS or Windows.
+> Notebooks and the `threading`/`sequential` backends don't.
 
 `multi_optimize` works with **any** solver that follows the `(x0, **kwargs) → OptimizeResult` signature — that includes
 `minimize`, `root`, `basinhopping`, or your own custom wrapper. It just calls `solver(x0=x0_i, **solver_kwargs)` for
