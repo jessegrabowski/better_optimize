@@ -3,6 +3,9 @@ import importlib
 import numpy as np
 import pytest
 
+from scipy.optimize import OptimizeResult
+
+from better_optimize import StopOptimization
 from better_optimize.basinhopping import AllowFailureStorage, basinhopping
 from better_optimize.utilities import LRUCache1, ToggleableProgress
 
@@ -359,3 +362,54 @@ def test_minimizer_progressbar_total_constant(monkeypatch):
     # Scipy doesn't guarantee that the minimizer will always run for maxiter iterations, so just check that the
     # majority of the recorded totals are equal to maxiter
     assert sum(total == maxiter for total in minimizer_totals) / len(minimizer_totals) > 0.51
+
+
+def test_basinhopping_callback_receives_uniform_result():
+    seen = []
+    basinhopping(
+        func2d,
+        x0=np.array([0.5, 0.5]),
+        niter=5,
+        progressbar=False,
+        callback=lambda r: seen.append(r),
+    )
+    assert len(seen) > 0
+    assert all(isinstance(r, OptimizeResult) for r in seen)
+    # basinhopping exposes its accept flag as an extra attribute on the uniform result.
+    assert hasattr(seen[-1], "accept")
+
+
+def test_basinhopping_callback_early_stop_with_stopoptimization():
+    n_calls = {"count": 0}
+
+    def stop_after_two(r):
+        n_calls["count"] += 1
+        if n_calls["count"] >= 2:
+            raise StopOptimization
+
+    res = basinhopping(
+        func2d,
+        x0=np.array([0.5, 0.5]),
+        niter=50,
+        progressbar=False,
+        callback=stop_after_two,
+    )
+    assert "early stop" in str(res.message).lower()
+
+
+def test_basinhopping_callback_returning_data_does_not_stop():
+    n_calls = {"count": 0}
+
+    def data_callback(r):
+        n_calls["count"] += 1
+        return float(r.fun)  # a returned value must not stop the run
+
+    basinhopping(
+        func2d,
+        x0=np.array([0.5, 0.5]),
+        niter=5,
+        progressbar=False,
+        callback=data_callback,
+    )
+    # Every iteration ran; the return value is ignored.
+    assert n_calls["count"] > 2

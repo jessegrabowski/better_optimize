@@ -5,7 +5,12 @@ import pytest
 
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
-from better_optimize import differential_evolution, minimize, sequential_optimize
+from better_optimize import (
+    StopOptimization,
+    differential_evolution,
+    minimize,
+    sequential_optimize,
+)
 
 
 def _rosen_fused(x):
@@ -107,14 +112,14 @@ def test_de_progress_bar_records_updates(monkeypatch):
     assert all(b <= a + 1e-12 for a, b in itertools.pairwise(finite))
 
 
-def test_de_keyboard_interrupt_returns_result():
+def test_de_callback_early_stop_with_stopoptimization():
     call_count = [0]
 
-    def user_callback(xk, convergence=0.0):
+    def user_callback(res):
+        assert isinstance(res, OptimizeResult)
         call_count[0] += 1
         if call_count[0] >= 3:
-            return True  # request early stop
-        return False
+            raise StopOptimization
 
     res = differential_evolution(
         rosen,
@@ -125,8 +130,25 @@ def test_de_keyboard_interrupt_returns_result():
         progressbar=False,
     )
     assert not res.success
-    # scipy handles the stop itself; message mentions "early" or our wrapper says "interrupted"
-    assert "early" in res.message.lower() or "interrupted" in res.message.lower()
+
+
+def test_de_callback_returning_data_does_not_stop():
+    # A callback returning a value must not stop the run.
+    call_count = [0]
+
+    def user_callback(res):
+        call_count[0] += 1
+        return float(res.fun)  # truthy return must be ignored
+
+    differential_evolution(
+        rosen,
+        bounds=[(-5.0, 5.0), (-5.0, 5.0)],
+        maxiter=50,
+        callback=user_callback,
+        rng=0,
+        progressbar=False,
+    )
+    assert call_count[0] > 1
 
 
 def test_de_invalid_strategy_raises():

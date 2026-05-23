@@ -10,6 +10,7 @@ from numpy.testing import assert_allclose
 from scipy.optimize import Bounds, LinearConstraint, NonlinearConstraint, OptimizeResult
 from scipy.sparse.linalg import LinearOperator
 
+from better_optimize import StopOptimization
 from better_optimize.constants import minimize_method
 from better_optimize.minimize import minimize
 from better_optimize.utilities import LRUCache1, ToggleableProgress
@@ -307,6 +308,101 @@ def test_constrained_rosen():
         tol=1e-20,
     )
     assert_allclose(res.x, np.array([0.41494531, 0.17010937]), atol=1e-5, rtol=1e-5)
+
+
+def test_minimize_callback_receives_uniform_result():
+    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+    seen = []
+    res = minimize(
+        partial(rosen, a=100, b=0),
+        x0,
+        method="L-BFGS-B",
+        progressbar=False,
+        tol=1e-8,
+        maxiter=5000,
+        callback=lambda r: seen.append(r),
+    )
+
+    assert res.success
+    assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
+    assert len(seen) > 0
+    # Every callback receives the uniform OptimizeResult, with consistent fields.
+    assert all(isinstance(r, OptimizeResult) for r in seen)
+    assert seen[0].x.shape == x0.shape
+    assert np.isfinite(seen[-1].fun)
+    assert [r.nit for r in seen] == list(range(1, len(seen) + 1))
+    assert_allclose(seen[-1].x, res.x, atol=1e-5, rtol=1e-5)
+
+
+def test_minimize_callback_returning_data_does_not_stop():
+    # A callback that returns a value (e.g. an ELBO or loss) must not be read as a stop request.
+    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+    n_calls = {"count": 0}
+
+    def elbo_callback(r):
+        n_calls["count"] += 1
+        return -float(np.sum(r.x**2))  # a truthy float every iteration
+
+    res = minimize(
+        partial(rosen, a=100, b=0),
+        x0,
+        method="L-BFGS-B",
+        progressbar=False,
+        tol=1e-8,
+        maxiter=5000,
+        callback=elbo_callback,
+    )
+
+    assert res.success
+    assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
+    assert n_calls["count"] > 1
+
+
+def test_minimize_callback_early_stop_with_stopoptimization():
+    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+    n_calls = {"count": 0}
+
+    def stop_after_three(r):
+        n_calls["count"] += 1
+        if n_calls["count"] >= 3:
+            raise StopOptimization
+
+    res = minimize(
+        partial(rosen, a=100, b=0),
+        x0,
+        method="BFGS",
+        progressbar=False,
+        callback=stop_after_three,
+    )
+
+    assert not res.success
+    assert n_calls["count"] == 3
+
+
+def test_minimize_callback_with_triple_fused_objective():
+    x0 = np.array([1.3, 0.7, 0.8, 1.9, 1.2])
+
+    seen = []
+    res = minimize(
+        rosen_triple_fused,
+        x0,
+        args=(100, 0),
+        method="trust-ncg",
+        progressbar=False,
+        tol=1e-12,
+        maxiter=10000,
+        callback=lambda r: seen.append(r),
+    )
+
+    assert res.success
+    assert len(seen) > 0
+    # A fused (value, grad, hess) objective still yields a scalar fun and the gradient.
+    assert all(isinstance(r, OptimizeResult) for r in seen)
+    assert np.ndim(seen[-1].fun) == 0
+    assert seen[-1].jac.shape == x0.shape
 
 
 def test_minimize_with_external_progressbar():

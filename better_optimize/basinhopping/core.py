@@ -67,7 +67,10 @@ def basinhopping(
         Accept the new point even if the minimizer fails. Will also update the global minimum if the point is
         better than the current global minimum, even if the minimizer fails.
     callback: Callable, optional
-        User-supplied function to call after each iteration
+        Function called after each iteration as ``callback(res)``, where ``res`` is an
+        ``OptimizeResult`` carrying the trial minimum ``res.x``, its objective value ``res.fun``,
+        ``res.nit``, and ``res.accept`` (whether the step was accepted). The return value is
+        ignored; raise ``StopOptimization`` to stop early. Default None.
     interval: int
         Interval for how often to update the step size
     progressbar: bool
@@ -237,12 +240,20 @@ def basinhopping(
 
     # The wrapped minimizer is called once during construction of
     # BasinHoppingRunner, so run the callback
+    early_stop = False
     if callable(callback):
-        callback(bh.storage.minres.x, bh.storage.minres.fun, True)
+        try:
+            callback(
+                OptimizeResult(x=bh.storage.minres.x, fun=bh.storage.minres.fun, nit=0, accept=True)
+            )
+        except StopIteration:
+            early_stop = True
 
     # start main iteration loop
     count, i = 0, 0
     message = ["requested number of basinhopping iterations completed" " successfully"]
+    if early_stop:
+        message = ["callback requested early stop"]
 
     grad_norm_at_min = 0.0
     if use_jac:
@@ -261,6 +272,8 @@ def basinhopping(
 
     with progress:
         for i in range(niter):
+            if early_stop:
+                break
             if progressbar:
                 progress.reset(minimize_task, visible=True)
             new_global_min = bh.one_cycle()
@@ -277,12 +290,12 @@ def basinhopping(
             )
 
             if callable(callback):
-                # should we pass a copy of x?
-                val = callback(bh.xtrial, bh.energy_trial, bh.accept)
-                if val is not None:
-                    if val:
-                        message = ["callback function requested stop early by" "returning True"]
-                        break
+                res = OptimizeResult(x=bh.xtrial, fun=bh.energy_trial, nit=i + 1, accept=bh.accept)
+                try:
+                    callback(res)  # return ignored; raise StopOptimization to stop early
+                except StopIteration:
+                    message = ["callback requested early stop"]
+                    break
 
             count += 1
             if new_global_min:

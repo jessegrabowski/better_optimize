@@ -57,6 +57,19 @@ All optimization routines in `better_optimize` can display a rich, informative p
 - Optionally accepts and stores failed minimizer results if they improve the global minimum.
 - Useful for noisy or non-smooth objective functions where local minimization may occasionally fail.
 
+### 6. Uniform Callback API
+
+scipy passes callbacks a different argument for almost every method: `callback(xk)`, `callback(xk, state)`,
+`callback(intermediate_result)`, or `callback(x, f)` for root finding. `better_optimize` normalizes them to a single
+`callback(res)`, where `res` is an `OptimizeResult` with the current `res.x`, `res.fun`, and `res.nit` — plus `res.jac`
+when a gradient is available, and solver-specific fields like `res.accept` (basinhopping) or `res.convergence`
+(differential evolution).
+
+- The return value is ignored, so a callback can report a value (an ELBO, a logged loss) without stopping the run.
+- Raise `StopOptimization` to stop early; the best result so far is returned with `success=False`.
+- The same callback works across `minimize`, `root`, `basinhopping`, and `differential_evolution`. `hybr` and `lm` are
+  the exception — scipy never calls a callback for them, so it is ignored with a warning.
+
 ---
 
 ## Example Usage
@@ -64,6 +77,7 @@ All optimization routines in `better_optimize` can display a rich, informative p
 ### Simple Example
 
 ```python
+import numpy as np
 from better_optimize import minimize
 
 def rosenbrock(x):
@@ -71,7 +85,7 @@ def rosenbrock(x):
 
 result = minimize(
     rosenbrock,
-    x0=[-1, 2],
+    x0=np.array([-1.0, 2.0]),
     method="L-BFGS-B",
     tol=1e-6,
     maxiter=1000,
@@ -86,6 +100,36 @@ result = minimize(
 ```
 
 The result object is a standard `OptimizeResult` from `scipy.optimize`, so there are no surprises there!
+
+### Callbacks and Early Stopping
+
+Pass a `callback` and it runs after each iteration with an `OptimizeResult`. Its return value is ignored; raise
+`StopOptimization` to stop and return the best result so far.
+
+```python
+import numpy as np
+from better_optimize import minimize, StopOptimization
+
+def rosenbrock(x):
+    return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+history = []
+
+def callback(res):
+    history.append(res.fun)  # res.x, res.fun, res.nit; res.jac when available
+    if res.fun < 1e-8:
+        raise StopOptimization
+
+result = minimize(
+    rosenbrock,
+    x0=np.array([-1.0, 2.0]),
+    method="L-BFGS-B",
+    callback=callback,
+)
+```
+
+The same callback works for `root` (`res.fun` is the residual vector), `basinhopping` (`res.accept`), and
+`differential_evolution` (`res.convergence`).
 
 ### Triple-Fused Function using Pytensor
 
@@ -123,6 +167,7 @@ Real-world objectives often have multiple local minima. A common workaround is t
 the optimizer and keep the best result. `better_optimize` makes this painless with `multi_optimize`:
 
 ```python
+import numpy as np
 from better_optimize import minimize, multi_optimize
 
 def rosenbrock(x):
@@ -146,6 +191,9 @@ print(result.x_best)     # Best parameter vector
 print(result.fun_best)   # Best objective value
 result.summary()          # Rich table of all runs, ranked
 ```
+
+> The `loky` (process) backend needs an `if __name__ == "__main__":` guard when run as a script on macOS or Windows.
+> Notebooks and the `threading`/`sequential` backends don't.
 
 `multi_optimize` works with **any** solver that follows the `(x0, **kwargs) → OptimizeResult` signature — that includes
 `minimize`, `root`, `basinhopping`, or your own custom wrapper. It just calls `solver(x0=x0_i, **solver_kwargs)` for

@@ -114,6 +114,9 @@ class ObjectiveWrapper:
 
         self.use_rayleigh = self.use_jac and (self.use_hess or self.use_hessp)
 
+        # Counts iterations for the uniform OptimizeResult handed to user callbacks.
+        self.n_iter = 0
+
         self.previous_x = None
         if isinstance(progressbar, bool):
             self.progressbar = progressbar
@@ -189,6 +192,54 @@ class ObjectiveWrapper:
         if self.interrupted:
             raise StopIteration
 
+    def callback_result(self, *args) -> OptimizeResult:
+        """Build the uniform ``OptimizeResult`` handed to a user callback.
+
+        SciPy passes callbacks several different argument shapes depending on the method (``xk``;
+        ``xk, state``; an ``intermediate_result``; or ``x, f`` for root finding); collapse them into
+        one result with ``x``, ``fun``, and ``nit``. ``fun`` is the scalar objective for
+        minimization and the residual vector for root finding. ``jac`` is present when a fused
+        value-and-gradient objective supplies it.
+        """
+        self.n_iter += 1
+
+        state = None
+        fun = None
+        if len(args) == 1 and isinstance(args[0], OptimizeResult):
+            state = args[0]  # minimize new-protocol intermediate_result
+            x = np.asarray(state.x, dtype=float)
+        elif len(args) >= 2 and isinstance(args[1], OptimizeResult):
+            state = args[1]  # trust-constr legacy (xk, state)
+            x = np.asarray(args[0], dtype=float)
+        elif self.root and len(args) >= 2:
+            x = np.asarray(args[0], dtype=float)
+            fun = np.asarray(args[1], dtype=float)  # residual vector
+        else:
+            x = np.asarray(args[0], dtype=float)
+
+        nit = self.n_iter
+        jac = None
+        if state is not None:
+            # Prefer SciPy's own numbers when it gave us a populated result.
+            fun = getattr(state, "fun", fun)
+            nit = int(getattr(state, "nit", nit))
+            jac = getattr(state, "jac", None)
+
+        if fun is None:
+            out = self.f(x)
+            if self.has_fused_f_and_grad:
+                fun, grad = out
+                if jac is None and not self.root:
+                    jac = grad
+            else:
+                fun = out
+            fun = fun if self.root else float(np.asarray(fun).reshape(()))
+
+        res = OptimizeResult(x=x, fun=fun, nit=nit)
+        if jac is not None:
+            res.jac = jac
+        return res
+
     def update_progressbar(
         self, value: float, grad: np.float64 = None, rayleigh: float | None = None, completed=False
     ) -> None:
@@ -245,6 +296,38 @@ class ObjectiveWrapper:
             use_jac=self.use_jac,
             use_rayleigh=self.use_rayleigh,
         )
+
+
+def _compose_callback(
+    internal: Callable[..., None],
+    result_builder: Callable[..., OptimizeResult],
+    user: Callable | None,
+) -> Callable:
+    """Bundle the internal early-stop hook with an optional user-supplied callback.
+
+    The internal hook runs first, so ``maxeval`` and ``KeyboardInterrupt`` halting stays intact.
+    The user callback then receives a uniform ``OptimizeResult`` built by ``result_builder`` from
+    whatever SciPy passed. Its return value is ignored; it requests an early stop by raising
+    :class:`~better_optimize.exceptions.StopOptimization` (or any ``StopIteration``).
+
+    Parameters
+    ----------
+    internal : callable
+        The :meth:`ObjectiveWrapper.callback` early-stop hook.
+    result_builder : callable
+        Normalizes SciPy's per-method callback arguments into a uniform ``OptimizeResult``
+        (typically :meth:`ObjectiveWrapper.callback_result`).
+    user : callable or None
+        The user-supplied callback. When None, ``internal`` is returned unchanged.
+    """
+    if user is None:
+        return internal
+
+    def composite(*args):
+        internal(*args)
+        user(result_builder(*args))
+
+    return composite
 
 
 def optimizer_early_stopping_wrapper(f_optim: partial):
