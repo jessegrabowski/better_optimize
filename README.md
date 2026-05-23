@@ -57,6 +57,19 @@ All optimization routines in `better_optimize` can display a rich, informative p
 - Optionally accepts and stores failed minimizer results if they improve the global minimum.
 - Useful for noisy or non-smooth objective functions where local minimization may occasionally fail.
 
+### 6. Uniform Callback API
+
+scipy passes callbacks a different argument for almost every method: `callback(xk)`, `callback(xk, state)`,
+`callback(intermediate_result)`, or `callback(x, f)` for root finding. `better_optimize` normalizes them to a single
+`callback(res)`, where `res` is an `OptimizeResult` with the current `res.x`, `res.fun`, and `res.nit` — plus `res.jac`
+when a gradient is available, and solver-specific fields like `res.accept` (basinhopping) or `res.convergence`
+(differential evolution).
+
+- The return value is ignored, so a callback can report a value (an ELBO, a logged loss) without stopping the run.
+- Raise `StopOptimization` to stop early; the best result so far is returned with `success=False`.
+- The same callback works across `minimize`, `root`, `basinhopping`, and `differential_evolution`. `hybr` and `lm` are
+  the exception — scipy never calls a callback for them, so it is ignored with a warning.
+
 ---
 
 ## Example Usage
@@ -87,6 +100,36 @@ result = minimize(
 ```
 
 The result object is a standard `OptimizeResult` from `scipy.optimize`, so there are no surprises there!
+
+### Callbacks and Early Stopping
+
+Pass a `callback` and it runs after each iteration with an `OptimizeResult`. Its return value is ignored; raise
+`StopOptimization` to stop and return the best result so far.
+
+```python
+import numpy as np
+from better_optimize import minimize, StopOptimization
+
+def rosenbrock(x):
+    return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+history = []
+
+def callback(res):
+    history.append(res.fun)  # res.x, res.fun, res.nit; res.jac when available
+    if res.fun < 1e-8:
+        raise StopOptimization
+
+result = minimize(
+    rosenbrock,
+    x0=np.array([-1.0, 2.0]),
+    method="L-BFGS-B",
+    callback=callback,
+)
+```
+
+The same callback works for `root` (`res.fun` is the residual vector), `basinhopping` (`res.accept`), and
+`differential_evolution` (`res.convergence`).
 
 ### Triple-Fused Function using Pytensor
 
