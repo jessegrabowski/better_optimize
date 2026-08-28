@@ -21,12 +21,19 @@ def declared_options(method: str) -> set[str]:
 MISSING_FROM_TABLE = {
     "CG": {"workers"},
     "BFGS": {"workers"},
+    "Newton-CG": {"workers"},
     "L-BFGS-B": {"workers"},
     "TNC": {"mesg_num", "workers"},
+    "dogleg": {"disp", "inexact", "maxiter", "return_all", "subproblem_maxiter", "workers"},
+    "trust-ncg": {"disp", "inexact", "maxiter", "return_all", "subproblem_maxiter"},
+    "trust-exact": {"disp", "inexact", "maxiter", "return_all", "workers"},
+    "trust-krylov": {"disp", "maxiter", "return_all", "subproblem_maxiter"},
 }
 
 # Options the table lists that we deliberately do not expose.
 NOT_CARRIED_OVER = {
+    # Supplied by ``minimize`` as a keyword, so it was never passable in ``options``.
+    "nelder-mead": {"bounds"},
     "L-BFGS-B": {"disp", "iprint"},
 }
 

@@ -5,7 +5,17 @@ import textwrap
 from collections.abc import Callable
 from typing import Any
 
-from scipy.optimize import _lbfgsb_py, _minimize, _optimize, _tnc
+from scipy.optimize import (
+    _lbfgsb_py,
+    _minimize,
+    _optimize,
+    _tnc,
+    _trustregion_dogleg,
+    _trustregion_exact,
+    _trustregion_krylov,
+    _trustregion_ncg,
+)
+from scipy.optimize._trustregion import _minimize_trust_region
 
 # Supplied positionally or by keyword by ``scipy.optimize.minimize`` itself, so they are
 # never legal members of the ``options`` dict. ``grad`` is trust-constr's name for ``jac``.
@@ -36,11 +46,27 @@ def option_signature(function: Callable[..., Any]) -> dict[str, Any]:
     }
 
 
+def trust_region_signature(wrapper: Callable[..., Any]) -> dict[str, Any]:
+    """A trust-region method's options: the shared driver's, overridden by the wrapper's.
+
+    The four wrappers name almost nothing themselves and forward the rest to
+    ``_minimize_trust_region``, so the reachable option set is the union of the two.
+    """
+    return option_signature(_minimize_trust_region) | option_signature(wrapper)
+
+
 SCIPY_OPTIONS: dict[str, dict[str, Any]] = {
+    "nelder-mead": option_signature(_optimize._minimize_neldermead),
+    "powell": option_signature(_optimize._minimize_powell),
     "CG": option_signature(_optimize._minimize_cg),
     "BFGS": option_signature(_optimize._minimize_bfgs),
+    "Newton-CG": option_signature(_optimize._minimize_newtoncg),
     "L-BFGS-B": option_signature(_lbfgsb_py._minimize_lbfgsb),
     "TNC": option_signature(_tnc._minimize_tnc),
+    "dogleg": trust_region_signature(_trustregion_dogleg._minimize_dogleg),
+    "trust-ncg": trust_region_signature(_trustregion_ncg._minimize_trust_ncg),
+    "trust-exact": trust_region_signature(_trustregion_exact._minimize_trustregion_exact),
+    "trust-krylov": trust_region_signature(_trustregion_krylov._minimize_trust_krylov),
 }
 
 # Options scipy accepts that we deliberately do not expose, with the reason.

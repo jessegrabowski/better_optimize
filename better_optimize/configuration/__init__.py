@@ -7,14 +7,30 @@ from better_optimize.configuration.first_order import (
     LBFGSBConfig,
     TNCConfig,
 )
+from better_optimize.configuration.gradient_free import NelderMeadConfig, PowellConfig
+from better_optimize.configuration.second_order import (
+    DoglegConfig,
+    NewtonCGConfig,
+    TrustExactConfig,
+    TrustKrylovConfig,
+    TrustNCGConfig,
+    TrustRegionConfig,
+)
 
 # Keyed by the method names better_optimize already advertises, so a caller may keep
 # passing a string.
 MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
+    "nelder-mead": NelderMeadConfig,
+    "powell": PowellConfig,
     "CG": CGConfig,
     "BFGS": BFGSConfig,
+    "Newton-CG": NewtonCGConfig,
     "L-BFGS-B": LBFGSBConfig,
     "TNC": TNCConfig,
+    "dogleg": DoglegConfig,
+    "trust-ncg": TrustNCGConfig,
+    "trust-exact": TrustExactConfig,
+    "trust-krylov": TrustKrylovConfig,
 }
 
 
@@ -39,8 +55,16 @@ __all__ = [
     "MINIMIZE_CONFIGS",
     "BFGSConfig",
     "CGConfig",
+    "DoglegConfig",
     "LBFGSBConfig",
     "MinimizeConfig",
+    "NelderMeadConfig",
+    "NewtonCGConfig",
+    "PowellConfig",
     "TNCConfig",
+    "TrustExactConfig",
+    "TrustKrylovConfig",
+    "TrustNCGConfig",
+    "TrustRegionConfig",
     "config_for_method",
 ]
