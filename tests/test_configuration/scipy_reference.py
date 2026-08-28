@@ -6,9 +6,11 @@ from collections.abc import Callable
 from typing import Any
 
 from scipy.optimize import (
+    _cobyla_py,
     _lbfgsb_py,
     _minimize,
     _optimize,
+    _slsqp_py,
     _tnc,
     _trustregion_dogleg,
     _trustregion_exact,
@@ -16,6 +18,7 @@ from scipy.optimize import (
     _trustregion_ncg,
 )
 from scipy.optimize._trustregion import _minimize_trust_region
+from scipy.optimize._trustregion_constr import minimize_trustregion_constr
 
 # Supplied positionally or by keyword by ``scipy.optimize.minimize`` itself, so they are
 # never legal members of the ``options`` dict. ``grad`` is trust-constr's name for ``jac``.
@@ -63,6 +66,9 @@ SCIPY_OPTIONS: dict[str, dict[str, Any]] = {
     "Newton-CG": option_signature(_optimize._minimize_newtoncg),
     "L-BFGS-B": option_signature(_lbfgsb_py._minimize_lbfgsb),
     "TNC": option_signature(_tnc._minimize_tnc),
+    "COBYLA": option_signature(_cobyla_py._minimize_cobyla),
+    "SLSQP": option_signature(_slsqp_py._minimize_slsqp),
+    "trust-constr": option_signature(minimize_trustregion_constr._minimize_trustregion_constr),
     "dogleg": trust_region_signature(_trustregion_dogleg._minimize_dogleg),
     "trust-ncg": trust_region_signature(_trustregion_ncg._minimize_trust_ncg),
     "trust-exact": trust_region_signature(_trustregion_exact._minimize_trustregion_exact),

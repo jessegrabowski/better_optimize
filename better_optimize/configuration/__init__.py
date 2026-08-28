@@ -16,6 +16,11 @@ from better_optimize.configuration.second_order import (
     TrustNCGConfig,
     TrustRegionConfig,
 )
+from better_optimize.configuration.supports_constraints import (
+    COBYLAConfig,
+    SLSQPConfig,
+    TrustConstrConfig,
+)
 
 # Keyed by the method names better_optimize already advertises, so a caller may keep
 # passing a string.
@@ -27,6 +32,9 @@ MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
     "Newton-CG": NewtonCGConfig,
     "L-BFGS-B": LBFGSBConfig,
     "TNC": TNCConfig,
+    "COBYLA": COBYLAConfig,
+    "SLSQP": SLSQPConfig,
+    "trust-constr": TrustConstrConfig,
     "dogleg": DoglegConfig,
     "trust-ncg": TrustNCGConfig,
     "trust-exact": TrustExactConfig,
@@ -54,6 +62,7 @@ def config_for_method(method: str, **options: Any) -> MinimizeConfig:
 __all__ = [
     "MINIMIZE_CONFIGS",
     "BFGSConfig",
+    "COBYLAConfig",
     "CGConfig",
     "DoglegConfig",
     "LBFGSBConfig",
@@ -61,7 +70,9 @@ __all__ = [
     "NelderMeadConfig",
     "NewtonCGConfig",
     "PowellConfig",
+    "SLSQPConfig",
     "TNCConfig",
+    "TrustConstrConfig",
     "TrustExactConfig",
     "TrustKrylovConfig",
     "TrustNCGConfig",
