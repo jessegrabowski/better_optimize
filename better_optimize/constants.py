@@ -30,7 +30,6 @@ root_method = Literal[
     "df-sane",
 ]
 
-TOLERANCES = ["xtol", "ftol", "gtol", "fatol", "xatol"]
 CONSOLE_WIDTH = 100
 
 DE_STRATEGY_OPTIONS = (

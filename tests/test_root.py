@@ -9,6 +9,7 @@ import pytest
 
 from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult
+from scipy.optimize import root as sp_root
 
 from better_optimize import StopOptimization
 from better_optimize.constants import root_method
@@ -62,11 +63,21 @@ def test_root(method: root_method):
         pytest.skip("mixing methods fail even on this, just skipping")
 
     x0 = np.array([0.1])
-    kwargs = {}
 
-    res = root(partial(func, a=1, b=2), x0, method=method, **kwargs)
+    res = root(partial(func, a=1, b=2), x0, method=method, tol=1e-8)
     assert_allclose(res.x, [-1.029866529322393])
     assert_allclose(res.fun, [0.0], atol=1e-8, rtol=1e-8)
+
+
+@pytest.mark.parametrize("method", ["anderson", "krylov"], ids=["anderson", "krylov"])
+def test_a_caller_who_passes_no_tolerance_gets_scipys_own(method: root_method):
+    """These two converge to a visibly different point under a tolerance of 1e-8, which is
+    what ``root`` used to supply when the caller named none."""
+    x0 = np.array([0.1])
+
+    ours = root(partial(func, a=1, b=2), x0, method=method, progressbar=False)
+
+    assert_allclose(ours.x, sp_root(partial(func, a=1, b=2), x0, method=method).x, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("method", all_methods, ids=all_methods)
@@ -75,9 +86,8 @@ def test_root_with_args(method: root_method):
         pytest.skip("mixing methods fail even on this, just skipping")
 
     x0 = np.array([0.1])
-    kwargs = {}
 
-    res = root(func, args=(1, 2), x0=x0, method=method, **kwargs)
+    res = root(func, args=(1, 2), x0=x0, method=method, tol=1e-8)
     assert_allclose(res.x, [-1.029866529322393])
     assert_allclose(res.fun, [0.0], atol=1e-8, rtol=1e-8)
 

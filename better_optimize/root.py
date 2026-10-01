@@ -14,7 +14,6 @@ from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_root,
     determine_maxiter,
-    determine_tolerance,
     kwargs_to_jac_options,
     kwargs_to_options,
     validate_provided_functions_root,
@@ -93,7 +92,6 @@ def root(
     optimizer_kwargs = kwargs_to_jac_options(optimizer_kwargs, method)
 
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, len(x0))
-    optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
 
     objective = ObjectiveWrapper(
         maxeval=maxiter,
