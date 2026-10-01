@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal, overload
 
 from better_optimize.configuration.base import MinimizeConfig
 from better_optimize.configuration.first_order import (
@@ -40,6 +40,66 @@ MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
     "trust-exact": TrustExactConfig,
     "trust-krylov": TrustKrylovConfig,
 }
+
+
+@overload
+def config_for_method(method: Literal["nelder-mead"], **options: Any) -> NelderMeadConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["powell"], **options: Any) -> PowellConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["CG"], **options: Any) -> CGConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["BFGS"], **options: Any) -> BFGSConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["Newton-CG"], **options: Any) -> NewtonCGConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["L-BFGS-B"], **options: Any) -> LBFGSBConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["TNC"], **options: Any) -> TNCConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["COBYLA"], **options: Any) -> COBYLAConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["SLSQP"], **options: Any) -> SLSQPConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["trust-constr"], **options: Any) -> TrustConstrConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["dogleg"], **options: Any) -> DoglegConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["trust-ncg"], **options: Any) -> TrustNCGConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["trust-exact"], **options: Any) -> TrustExactConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["trust-krylov"], **options: Any) -> TrustKrylovConfig: ...
+
+
+@overload
+def config_for_method(method: str, **options: Any) -> MinimizeConfig: ...
 
 
 def config_for_method(method: str, **options: Any) -> MinimizeConfig:
