@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -5,6 +6,7 @@ import numpy as np
 
 from better_optimize.configuration.base import (
     SQRT_EPS,
+    UNSET,
     FiniteDiffStep,
     MinimizeConfig,
     Workers,
@@ -56,7 +58,7 @@ class BFGSConfig(MinimizeConfig):
         is supplied, and never parallelizes the objective itself. Defaults to None.
     """
 
-    gtol: float = 1e-5
+    gtol: float = UNSET
     norm: float = np.inf
     eps: float | np.ndarray = SQRT_EPS
     maxiter: int | None = None
@@ -73,7 +75,7 @@ class BFGSConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("gtol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"gtol": 1e-5}
 
     @property
     def method_name(self) -> str:
@@ -112,7 +114,7 @@ class CGConfig(MinimizeConfig):
         Parallelize the finite-difference gradient. Defaults to None.
     """
 
-    gtol: float = 1e-5
+    gtol: float = UNSET
     norm: float = np.inf
     eps: float | np.ndarray = SQRT_EPS
     maxiter: int | None = None
@@ -127,7 +129,7 @@ class CGConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("gtol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"gtol": 1e-5}
 
     @property
     def method_name(self) -> str:
@@ -157,12 +159,12 @@ class LBFGSBConfig(MinimizeConfig):
         Absolute step size for the forward-difference gradient. Defaults to 1e-8, which is
         not the :math:`\sqrt{\epsilon}` used by :class:`BFGSConfig` and :class:`CGConfig`.
     maxiter : int, optional
-        Maximum number of iterations. Defaults to ``200 * n``, overriding scipy's own
-        default of 15000.
+        Maximum number of iterations. Defaults to ``200 * n`` once the solver supplies the
+        problem dimension, overriding scipy's own default of 15000.
     maxfun : int, optional
         Maximum number of function evaluations, checked after `maxiter` within an iteration
-        and so able to overshoot slightly. Defaults to ``200 * n``, overriding scipy's own
-        default of 15000.
+        and so able to overshoot slightly. Defaults to ``200 * n`` once the solver supplies
+        the problem dimension, overriding scipy's own default of 15000.
     maxls : int, optional
         Maximum line search steps per iteration, which scipy requires to be positive.
         Defaults to 20.
@@ -173,8 +175,8 @@ class LBFGSBConfig(MinimizeConfig):
     """
 
     maxcor: int = 10
-    ftol: float = 2.220446049250313e-09
-    gtol: float = 1e-5
+    ftol: float = UNSET
+    gtol: float = UNSET
     eps: float | np.ndarray = 1e-8
     maxiter: int | None = None
     maxfun: int | None = None
@@ -186,8 +188,8 @@ class LBFGSBConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("ftol", "gtol")
-    _budget_options: ClassVar[tuple[str, ...]] = ("maxiter", "maxfun")
+    _tol_options: ClassVar[Mapping[str, float]] = {"ftol": 2.220446049250313e-09, "gtol": 1e-5}
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfun",)
 
     @property
     def method_name(self) -> str:
@@ -257,9 +259,9 @@ class TNCConfig(MinimizeConfig):
     stepmx: float = 0
     accuracy: float = 0
     minfev: float = 0
-    ftol: float = -1
-    xtol: float = -1
-    gtol: float = -1
+    ftol: float = UNSET
+    xtol: float = UNSET
+    gtol: float = UNSET
     rescale: float = -1
     disp: bool = False
     finite_diff_rel_step: FiniteDiffStep = None
@@ -270,12 +272,13 @@ class TNCConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("xtol", "ftol", "gtol")
-    _budget_options: ClassVar[tuple[str, ...]] = ("maxfun",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"xtol": -1, "ftol": -1, "gtol": -1}
+    _iteration_options: ClassVar[tuple[str, ...]] = ()
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfun",)
 
     @property
     def method_name(self) -> str:
         return "TNC"
 
-    def default_maxiter(self, n: int) -> int:
+    def default_budget(self, n: int) -> int:
         return max(100, 10 * n)

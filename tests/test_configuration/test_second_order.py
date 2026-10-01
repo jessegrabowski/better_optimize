@@ -45,7 +45,7 @@ def test_newton_cg_stops_on_the_step_not_the_gradient():
 
     assert "xtol" in names
     assert "gtol" not in names
-    assert NewtonCGConfig(tol=1e-9).optimizer_kwargs["xtol"] == 1e-9
+    assert NewtonCGConfig(tol=1e-9).optimizer_kwargs()["xtol"] == 1e-9
 
 
 def test_the_trust_region_gradient_tolerance_is_looser_than_the_quasi_newton_one():

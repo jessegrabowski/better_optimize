@@ -8,9 +8,8 @@ from better_optimize.constants import minimize_method
 REGISTERED = sorted(MINIMIZE_CONFIGS)
 
 
-@pytest.mark.parametrize("method", REGISTERED)
-def test_every_key_is_a_method_better_optimize_advertises(method):
-    assert method in get_args(minimize_method)
+def test_the_registry_covers_exactly_the_advertised_methods():
+    assert set(MINIMIZE_CONFIGS) == set(get_args(minimize_method))
 
 
 @pytest.mark.parametrize("method", REGISTERED)

@@ -47,12 +47,12 @@ def test_tnc_has_no_maxiter_because_scipy_ignores_it():
 
 
 def test_tnc_budget_default_is_not_the_usual_two_hundred_n():
-    assert TNCConfig().default_maxiter(10) == 100
-    assert BFGSConfig().default_maxiter(10) == 2000
+    assert TNCConfig().default_budget(10) == 100
+    assert BFGSConfig().default_budget(10) == 2000
 
 
 def test_tnc_keeps_its_negative_sentinels():
-    options = TNCConfig().optimizer_kwargs
+    options = TNCConfig().optimizer_kwargs()
 
     assert options["eta"] == -1
     assert options["ftol"] == -1
@@ -61,4 +61,4 @@ def test_tnc_keeps_its_negative_sentinels():
 
 def test_every_method_reports_workers():
     for config in ALL:
-        assert "workers" in config().optimizer_kwargs
+        assert "workers" in config().optimizer_kwargs()

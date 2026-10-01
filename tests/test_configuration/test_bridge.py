@@ -56,7 +56,7 @@ def test_the_budget_default_is_unchanged(method):
     tabled = MINIMIZE_MODE_KWARGS[method]["f_maxiter_default"]
 
     for n in (1, 10, 100):
-        assert config.default_maxiter(n) == tabled(n)
+        assert config.default_budget(n) == tabled(n)
 
 
 @pytest.mark.parametrize("method", REGISTERED)

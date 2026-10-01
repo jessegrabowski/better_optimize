@@ -1,9 +1,10 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
 
-from better_optimize.configuration.base import MinimizeConfig
+from better_optimize.configuration.base import UNSET, MinimizeConfig
 
 __all__ = ["NelderMeadConfig", "PowellConfig"]
 
@@ -42,16 +43,16 @@ class NelderMeadConfig(MinimizeConfig):
     disp: bool = False
     return_all: bool = False
     initial_simplex: np.ndarray | None = None
-    xatol: float = 1e-4
-    fatol: float = 1e-4
+    xatol: float = UNSET
+    fatol: float = UNSET
     adaptive: bool = False
 
     uses_grad: ClassVar[bool] = False
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("xatol", "fatol")
-    _budget_options: ClassVar[tuple[str, ...]] = ("maxiter", "maxfev")
+    _tol_options: ClassVar[Mapping[str, float]] = {"xatol": 1e-4, "fatol": 1e-4}
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
 
     @property
     def method_name(self) -> str:
@@ -84,8 +85,8 @@ class PowellConfig(MinimizeConfig):
         Return the full list of iterates on the result object. Defaults to False.
     """
 
-    xtol: float = 1e-4
-    ftol: float = 1e-4
+    xtol: float = UNSET
+    ftol: float = UNSET
     maxiter: int | None = None
     maxfev: int | None = None
     disp: bool = False
@@ -96,12 +97,12 @@ class PowellConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("xtol", "ftol")
-    _budget_options: ClassVar[tuple[str, ...]] = ("maxiter", "maxfev")
+    _tol_options: ClassVar[Mapping[str, float]] = {"xtol": 1e-4, "ftol": 1e-4}
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
 
     @property
     def method_name(self) -> str:
         return "powell"
 
-    def default_maxiter(self, n: int) -> int:
+    def default_budget(self, n: int) -> int:
         return 1000 * n

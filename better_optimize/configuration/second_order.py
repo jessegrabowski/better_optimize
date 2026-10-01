@@ -1,10 +1,16 @@
 from abc import ABC
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
 
-from better_optimize.configuration.base import SQRT_EPS, MinimizeConfig, Workers
+from better_optimize.configuration.base import (
+    SQRT_EPS,
+    UNSET,
+    MinimizeConfig,
+    Workers,
+)
 
 __all__ = [
     "DoglegConfig",
@@ -46,7 +52,7 @@ class NewtonCGConfig(MinimizeConfig):
         Parallelize the finite-difference derivatives. Defaults to None.
     """
 
-    xtol: float = 1e-5
+    xtol: float = UNSET
     eps: float | np.ndarray = SQRT_EPS
     maxiter: int | None = None
     disp: bool = False
@@ -59,7 +65,7 @@ class NewtonCGConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = True
     uses_hessp: ClassVar[bool] = True
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("xtol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"xtol": 1e-5}
 
     @property
     def method_name(self) -> str:
@@ -108,7 +114,7 @@ class TrustRegionConfig(MinimizeConfig, ABC):
     initial_trust_radius: float = 1.0
     max_trust_radius: float = 1000.0
     eta: float = 0.15
-    gtol: float = 1e-4
+    gtol: float = UNSET
     maxiter: int | None = None
     disp: bool = False
     return_all: bool = False
@@ -119,7 +125,7 @@ class TrustRegionConfig(MinimizeConfig, ABC):
     uses_grad: ClassVar[bool] = True
     uses_hess: ClassVar[bool] = True
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("gtol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"gtol": 1e-4}
 
 
 @dataclass

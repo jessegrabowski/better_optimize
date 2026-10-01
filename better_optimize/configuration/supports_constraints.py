@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -5,6 +6,7 @@ import numpy as np
 
 from better_optimize.configuration.base import (
     SQRT_EPS,
+    UNSET,
     FiniteDiffStep,
     MinimizeConfig,
     Workers,
@@ -39,7 +41,7 @@ class COBYLAConfig(MinimizeConfig):
         which never triggers.
     """
 
-    tol: float | None = 1e-4
+    tol: float | None = UNSET
     rhobeg: float = 1.0
     maxiter: int | None = None
     disp: int = 0
@@ -51,13 +53,15 @@ class COBYLAConfig(MinimizeConfig):
     uses_hessp: ClassVar[bool] = False
 
     _excluded: ClassVar[frozenset[str]] = frozenset()
-    _tol_options: ClassVar[tuple[str, ...]] = ("tol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"tol": 1e-4}
+    _iteration_options: ClassVar[tuple[str, ...]] = ()
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxiter",)
 
     @property
     def method_name(self) -> str:
         return "COBYLA"
 
-    def default_maxiter(self, n: int) -> int:
+    def default_budget(self, n: int) -> int:
         return 1000
 
 
@@ -88,7 +92,7 @@ class SLSQPConfig(MinimizeConfig):
     """
 
     maxiter: int | None = None
-    ftol: float = 1e-6
+    ftol: float = UNSET
     iprint: int = 1
     disp: bool = False
     eps: float | np.ndarray = SQRT_EPS
@@ -99,13 +103,13 @@ class SLSQPConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("ftol",)
+    _tol_options: ClassVar[Mapping[str, float]] = {"ftol": 1e-6}
 
     @property
     def method_name(self) -> str:
         return "SLSQP"
 
-    def default_maxiter(self, n: int) -> int:
+    def default_budget(self, n: int) -> int:
         return 100
 
 
@@ -152,9 +156,9 @@ class TrustConstrConfig(MinimizeConfig):
         Parallelize the objective's finite-difference derivatives. Defaults to None.
     """
 
-    xtol: float = 1e-8
-    gtol: float = 1e-8
-    barrier_tol: float = 1e-8
+    xtol: float = UNSET
+    gtol: float = UNSET
+    barrier_tol: float = UNSET
     sparse_jacobian: bool | None = None
     maxiter: int | None = None
     verbose: int = 0
@@ -171,11 +175,15 @@ class TrustConstrConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = True
     uses_hessp: ClassVar[bool] = True
 
-    _tol_options: ClassVar[tuple[str, ...]] = ("xtol", "gtol", "barrier_tol")
+    _tol_options: ClassVar[Mapping[str, float]] = {
+        "xtol": 1e-8,
+        "gtol": 1e-8,
+        "barrier_tol": 1e-8,
+    }
 
     @property
     def method_name(self) -> str:
         return "trust-constr"
 
-    def default_maxiter(self, n: int) -> int:
+    def default_budget(self, n: int) -> int:
         return 1000
