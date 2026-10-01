@@ -43,10 +43,15 @@ SUPPLIED_BY_MINIMIZE = frozenset(
 def option_signature(function: Callable[..., Any]) -> dict[str, Any]:
     """The options a scipy minimizer accepts, mapped to their source defaults."""
     return {
-        name: parameter.default
+        name: None if _is_deprecation_sentinel(parameter.default) else parameter.default
         for name, parameter in inspect.signature(function).parameters.items()
         if parameter.kind is not parameter.VAR_KEYWORD and name not in SUPPLIED_BY_MINIMIZE
     }
+
+
+def _is_deprecation_sentinel(default: Any) -> bool:
+    """scipy marks a deprecated option's default with a bare ``object()`` meaning "unset"."""
+    return type(default) is object
 
 
 def trust_region_signature(wrapper: Callable[..., Any]) -> dict[str, Any]:
@@ -73,14 +78,6 @@ SCIPY_OPTIONS: dict[str, dict[str, Any]] = {
     "trust-ncg": trust_region_signature(_trustregion_ncg._minimize_trust_ncg),
     "trust-exact": trust_region_signature(_trustregion_exact._minimize_trustregion_exact),
     "trust-krylov": trust_region_signature(_trustregion_krylov._minimize_trust_krylov),
-}
-
-# Options scipy accepts that we deliberately do not expose, with the reason.
-OMITTED_OPTIONS: dict[str, dict[str, str]] = {
-    "L-BFGS-B": {
-        "disp": "deprecated no-op, removed in scipy 1.18",
-        "iprint": "deprecated no-op, removed in scipy 1.18",
-    },
 }
 
 

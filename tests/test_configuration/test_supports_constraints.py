@@ -25,7 +25,7 @@ def test_cobyla_uses_no_derivatives():
 
 
 def test_cobyla_leaves_the_constraint_tolerance_for_scipy_to_resolve():
-    assert COBYLAConfig().optimizer_kwargs()["catol"] is None
+    assert "catol" not in COBYLAConfig().optimizer_kwargs()
     assert COBYLAConfig().optimizer_kwargs()["f_target"] == -np.inf
 
 

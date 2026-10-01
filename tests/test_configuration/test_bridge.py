@@ -37,7 +37,6 @@ MISSING_FROM_TABLE = {
 NOT_CARRIED_OVER = {
     # Supplied by ``minimize`` as a keyword, so it was never passable in ``options``.
     "nelder-mead": {"bounds"},
-    "L-BFGS-B": {"disp", "iprint"},
 }
 
 

@@ -4,11 +4,7 @@ import pytest
 
 from better_optimize.configuration import MINIMIZE_CONFIGS
 from better_optimize.configuration.base import UNSET
-from tests.test_configuration.scipy_reference import (
-    OMITTED_OPTIONS,
-    SCIPY_OPTIONS,
-    tol_targets,
-)
+from tests.test_configuration.scipy_reference import SCIPY_OPTIONS, tol_targets
 
 REGISTERED = sorted(MINIMIZE_CONFIGS)
 
@@ -31,15 +27,7 @@ def declared_options(method):
 @pytest.mark.parametrize("method", REGISTERED)
 def test_fields_are_exactly_the_options_scipy_accepts(method):
     declared = declared_options(method)
-    accepted = set(SCIPY_OPTIONS[method]) - set(OMITTED_OPTIONS.get(method, {}))
-
-    assert declared == accepted
-
-
-@pytest.mark.parametrize("method", REGISTERED)
-def test_omitted_options_are_real_scipy_options(method):
-    for name in OMITTED_OPTIONS.get(method, {}):
-        assert name in SCIPY_OPTIONS[method]
+    assert declared == set(SCIPY_OPTIONS[method])
 
 
 @pytest.mark.parametrize("method", REGISTERED)
@@ -48,7 +36,7 @@ def test_defaults_match_the_scipy_source(method):
     ours = config_fields(method)
 
     for name, scipy_default in SCIPY_OPTIONS[method].items():
-        if name in config._budget_options() or name in OMITTED_OPTIONS.get(method, {}):
+        if name in config._budget_options():
             continue
         assert ours[name] == scipy_default, name
 
@@ -66,10 +54,18 @@ def test_budget_options_are_unset_so_better_optimize_can_choose(method):
 
 @pytest.mark.parametrize("method", REGISTERED)
 def test_every_declared_option_reaches_scipy(method):
+    """An option left unset is omitted, so set them all to see the full surface."""
     config_class = MINIMIZE_CONFIGS[method]
-    config = config_class(**{name: 123 for name in config_class._budget_options()})
+    config = config_class(**dict.fromkeys(declared_options(method), 123))
 
     assert set(config.optimizer_kwargs()) == declared_options(method)
+
+
+@pytest.mark.parametrize("method", REGISTERED)
+def test_an_option_the_caller_left_unset_is_omitted(method):
+    emitted = set(MINIMIZE_CONFIGS[method]().optimizer_kwargs())
+
+    assert emitted < declared_options(method)
 
 
 @pytest.mark.parametrize("method", REGISTERED)

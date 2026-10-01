@@ -27,10 +27,14 @@ UNSET: Any = _Unset()
 class MinimizeConfig(ABC):
     """One scipy ``minimize`` method, its options, and what it needs from the objective.
 
-    Each subclass declares one field per option the method actually accepts, typed and
-    defaulted to the value in scipy's own source. The fields are therefore the complete
-    and authoritative option list: passing anything else raises ``TypeError`` rather than
-    the ``OptimizeWarning`` scipy would emit and drop.
+    Each subclass declares one field per option the method accepts, named and typed as
+    scipy's own signature has them. The fields are therefore the complete and authoritative
+    option list: passing anything else raises ``TypeError`` rather than the
+    ``OptimizeWarning`` scipy would emit and drop.
+
+    An option the caller leaves unset is omitted from :meth:`optimizer_kwargs` rather than
+    sent, so scipy applies its own default and a config never names an option the installed
+    scipy does not have.
 
     Methods disagree about what their work budget is called, so there is no ``maxiter``
     field here. Each subclass lists the names scipy accepts in ``_iteration_options`` and
@@ -93,8 +97,8 @@ class MinimizeConfig(ABC):
             )
 
     def __post_init__(self) -> None:
-        # COBYLA's own option is named ``tol``, so the convenience knob and one target are
-        # the same field; an unset one there means "no tol given", not "fill from tol".
+        # A method whose own option is named ``tol`` shares this one field with the
+        # convenience knob, where unset means "no tol given" rather than "fill from tol".
         requested = None if self.tol is UNSET else self.tol
 
         for name, scipy_default in self._tol_options.items():
@@ -129,17 +133,15 @@ class MinimizeConfig(ABC):
             if field.name not in self._excluded
         }
 
-        # Several methods compare against their budget directly and would raise on a None,
-        # so an unset budget is omitted rather than sent, letting scipy apply its own.
-        for name in self._budget_options():
-            if options[name] is not None:
-                continue
-            if n is None:
-                del options[name]
-            else:
-                options[name] = self.default_budget(n)
+        if n is not None:
+            for name in self._budget_options():
+                if options[name] is None:
+                    options[name] = self.default_budget(n)
 
-        return options
+        # An option the caller never set is omitted rather than sent as None. scipy's own
+        # default for each of these is None too, so the run is unchanged, and omitting means
+        # a config never names an option the installed scipy has not heard of.
+        return {name: value for name, value in options.items() if value is not None}
 
     def evaluation_budget(self, n: int) -> int:
         """The cap on objective evaluations, for the wrapper that counts them.
@@ -158,10 +160,6 @@ class MinimizeConfig(ABC):
     @classmethod
     def _budget_options(cls) -> tuple[str, ...]:
         return (*cls._iteration_options, *cls._evaluation_options)
-
-    @staticmethod
-    def _copy_if_array(value: Any) -> Any:
-        return value.copy() if isinstance(value, np.ndarray) else value
 
     @classmethod
     def _annotations(cls) -> dict[str, Any]:

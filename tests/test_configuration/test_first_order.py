@@ -29,11 +29,12 @@ def test_lbfgsb_uses_a_smaller_finite_difference_step_than_bfgs():
     assert BFGSConfig().eps == 1.4901161193847656e-08
 
 
-def test_lbfgsb_does_not_expose_the_deprecated_verbosity_options():
+def test_lbfgsb_exposes_the_deprecated_verbosity_options_scipy_still_accepts():
     names = {field.name for field in fields(LBFGSBConfig)}
 
-    assert "disp" not in names
-    assert "iprint" not in names
+    assert {"disp", "iprint"} <= names
+    assert "iprint" in LBFGSBConfig(iprint=1).optimizer_kwargs()
+    assert "iprint" not in LBFGSBConfig().optimizer_kwargs()
 
 
 def test_tnc_has_no_maxiter_because_scipy_ignores_it():
@@ -61,4 +62,5 @@ def test_tnc_keeps_its_negative_sentinels():
 
 def test_every_method_reports_workers():
     for config in ALL:
-        assert "workers" in config().optimizer_kwargs()
+        assert "workers" in {field.name for field in fields(config)}
+        assert config(workers=2).optimizer_kwargs()["workers"] == 2
