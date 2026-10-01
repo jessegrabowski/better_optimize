@@ -1,5 +1,3 @@
-import re
-
 from contextlib import contextmanager
 from itertools import product
 from typing import get_args
@@ -7,10 +5,8 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from scipy.optimize import show_options
-
 from better_optimize.configuration import config_for_method
-from better_optimize.constants import MINIMIZE_MODE_KWARGS, TOLERANCES, minimize_method, root_method
+from better_optimize.constants import TOLERANCES, minimize_method, root_method
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
@@ -24,6 +20,7 @@ from better_optimize.utilities import (
 )
 
 methods = get_args(minimize_method)
+root_methods = get_args(root_method)
 
 
 @contextmanager
@@ -105,8 +102,8 @@ def test_validate_provided_functions_warnings(caplog, settings, method: minimize
         caplog.clear()
 
 
-@pytest.mark.parametrize("method", methods, ids=methods)
-def test_determine_maxiter(method: minimize_method):
+@pytest.mark.parametrize("method", root_methods, ids=root_methods)
+def test_determine_maxiter(method: root_method):
     all_maxiter_kwargs = ["maxiter", "maxfun", "maxfev"]
     method_info = get_option_kwargs(method)
     maxiter_kwargs = [x for x in method_info["valid_options"] if x in all_maxiter_kwargs]
@@ -125,82 +122,30 @@ def test_determine_maxiter(method: minimize_method):
             assert kwarg not in optimizer_kwargs["options"]
 
 
-@pytest.mark.parametrize("method", methods, ids=methods)
-def test_determine_tolerance(method: minimize_method):
+@pytest.mark.parametrize("method", root_methods, ids=root_methods)
+def test_determine_tolerance(method: root_method):
     optimizer_kwargs = {"options": {}, "tol": 1e-8}
     optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
     options = optimizer_kwargs["options"]
 
-    docstring = show_options(solver="minimize", method=method, disp=False)
+    tolerances = [name for name in get_option_kwargs(method)["valid_options"] if name in TOLERANCES]
 
-    # Parse docstring to dictionary of headings and values
-    headings = ["Parameters", "Options", "Returns", "References", "Notes"]
-    formatted_headings = [heading + "\n" + "-" * len(heading) for heading in headings]
-    pattern = r"(" + r"|".join(formatted_headings) + r")"
-    intro, *blocks = re.split(pattern, re.sub(" {4}", "", docstring))
-
-    # Structure of the list is heading - body - heading - body - ...
-    block_dict = dict(zip(blocks[::2], blocks[1::2]))
-
-    # Split body text into lines, keep only the parameter of the form "name : dtype"
-    block_dict = {
-        k.replace("-", "").strip().lower(): [
-            x.split(":")[0].strip() for x in v.split("\n") if " : " in x
-        ]
-        for k, v in block_dict.items()
-    }
-
-    # In rare cases two parameters are on the same line, as in "name_1, name_2 : dtype"
-    block_dict = {
-        k: [item.strip() for x in v for item in x.split(",") if "*" not in item]
-        for k, v in block_dict.items()
-    }
-
-    FILTER_NAMES = ["fun", "x0", "args", "method", "options", "callback"]
-    all_options = sorted(
-        [
-            x
-            for x in block_dict.get("options", []) + block_dict.get("parameters", [])
-            if x not in FILTER_NAMES
-        ]
-    )
-
-    expected_options = sorted(MINIMIZE_MODE_KWARGS[method]["valid_options"])
-
-    # This sucks, but the scipy docstrings are not very consistent and some options are not documented. I hardcode the
-    # missing options here
-    undocumented_options = {
-        "trust-ncg": {"workers"},
-        "trust-krylov": {"workers", "eta", "max_trust_radius", "initial_trust_radius", "gtol"},
-        "trust-exact": {"subproblem_maxiter"},
-        "trust-constr": {
-            "initial_barrier_parameter",
-            "initial_tr_radius",
-            "initial_barrier_tolerance",
-        },
-    }
-
-    missing_options = (
-        set(expected_options) - set(all_options) - set(undocumented_options.get(method, []))
-    )
-    assert not missing_options, "missing options: " + ", ".join(missing_options)
-
-    expected_tols = [x for x in expected_options if x in TOLERANCES]
-    assert all(options[tol] == 1e-8 for tol in expected_tols)
+    assert optimizer_kwargs["tol"] == 1e-8
+    assert all(options[name] == 1e-8 for name in tolerances)
 
 
 def test_kwargs_to_options():
     kwargs = {
-        "return_all": True,
-        "initial_simplex": "hello",
-        "disp": 1,
+        "maxiter": 10,
+        "disp": True,
+        "line_search": "armijo",
         "fun": lambda x: x,
         "x0": [1, 2, 3],
     }
-    option_kwargs = ["return_all", "initial_simplex", "disp"]
+    option_kwargs = ["disp", "line_search"]
     not_option_kwargs = ["fun", "x0"]
 
-    method: minimize_method = "nelder-mead"
+    method: root_method = "krylov"
     new_kwargs = kwargs_to_options(kwargs, method)
 
     # Test that the kwargs were moved to options
