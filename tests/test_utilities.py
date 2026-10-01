@@ -111,7 +111,8 @@ def test_determine_maxiter(method: root_method):
     optimizer_kwargs = {"options": {}}
     maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, n_vars=100)
 
-    expected_maxiter = method_info["f_maxiter_default"](100)
+    # Every root method budgets 100 * (n + 1).
+    expected_maxiter = 10100
     assert maxiter == expected_maxiter
 
     for kwarg in maxiter_kwargs:
