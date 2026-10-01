@@ -29,12 +29,12 @@ def test_lbfgsb_uses_a_smaller_finite_difference_step_than_bfgs():
     assert BFGSConfig().eps == 1.4901161193847656e-08
 
 
-def test_lbfgsb_exposes_the_deprecated_verbosity_options_scipy_still_accepts():
+def test_lbfgsb_has_no_verbosity_options():
+    """scipy 1.18 removed ``disp`` and ``iprint``; the config mirrors the signature."""
     names = {field.name for field in fields(LBFGSBConfig)}
 
-    assert {"disp", "iprint"} <= names
-    assert "iprint" in LBFGSBConfig(iprint=1).optimizer_kwargs()
-    assert "iprint" not in LBFGSBConfig().optimizer_kwargs()
+    assert "disp" not in names
+    assert "iprint" not in names
 
 
 def test_tnc_has_no_maxiter_because_scipy_ignores_it():

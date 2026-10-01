@@ -169,12 +169,6 @@ class LBFGSBConfig(MinimizeConfig):
         Relative step size for a named finite-difference gradient scheme. Defaults to None.
     workers : int or map-like callable, optional
         Parallelize the finite-difference gradient. Defaults to None.
-    disp : bool, optional
-        Deprecated no-op, slated for removal in scipy 1.18. Setting it emits a
-        ``DeprecationWarning`` and changes nothing. Defaults to None.
-    iprint : int, optional
-        Deprecated no-op, slated for removal in scipy 1.18. Setting it emits a
-        ``DeprecationWarning`` and changes nothing. Defaults to None.
     """
 
     maxcor: int = 10
@@ -186,8 +180,6 @@ class LBFGSBConfig(MinimizeConfig):
     maxls: int = 20
     finite_diff_rel_step: FiniteDiffStep = None
     workers: Workers = None
-    disp: bool | None = None
-    iprint: int | None = None
 
     uses_grad: ClassVar[bool] = True
     uses_hess: ClassVar[bool] = False
