@@ -10,6 +10,7 @@ from scipy.sparse.linalg import LinearOperator
 
 from better_optimize.configuration import (
     BasinHoppingConfig,
+    DifferentialEvolutionConfig,
     MinimizeConfig,
     config_from_kwargs,
 )
@@ -105,6 +106,30 @@ def minimize(
             verbose=verbose,
             **config.optimizer_kwargs(n=n_vars),
         )
+
+    if isinstance(config, DifferentialEvolutionConfig):
+        if "bounds" not in solver_kwargs:
+            raise TypeError(
+                "differential_evolution searches a bounded region, so bounds is required."
+            )
+        if jac is not None or hess is not None or hessp is not None:
+            raise TypeError(
+                "differential_evolution uses no derivative information, so it cannot take "
+                "jac, hess, or hessp."
+            )
+
+        return config.solver_function()(
+            f=f,
+            x0=x0,
+            args=() if args is None else args,
+            callback=callback,
+            progressbar=progressbar,
+            progress_task=progress_task,
+            verbose=verbose,
+            **solver_kwargs,
+            **config.optimizer_kwargs(n=n_vars),
+        )
+
     has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(f, x0, args)
 
     use_grad, use_hess, use_hessp = validate_provided_functions_minimize(

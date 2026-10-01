@@ -3,7 +3,7 @@ import pytest
 
 from scipy.optimize import rosen, rosen_der, rosen_hess
 
-from better_optimize import minimize
+from better_optimize import differential_evolution, minimize
 from better_optimize.basinhopping import basinhopping
 from better_optimize.configuration import (
     BasinHoppingConfig,
@@ -13,6 +13,8 @@ from better_optimize.configuration import (
     NewtonCGConfig,
     TrustNCGConfig,
 )
+
+BOUNDS = [(-2.0, 2.0), (-2.0, 2.0)]
 
 X0 = np.array([-1.2, 1.0])
 
@@ -121,3 +123,36 @@ def test_a_callable_strategy_is_left_to_scipy():
         return population[candidate]
 
     assert DifferentialEvolutionConfig(strategy=build_trial_vector).strategy is build_trial_vector
+
+
+def test_minimize_dispatches_a_config_to_differential_evolution():
+    through_minimize = minimize(
+        rosen,
+        X0,
+        method=DifferentialEvolutionConfig(maxiter=20, rng=0),
+        bounds=BOUNDS,
+        progressbar=False,
+    )
+    directly = differential_evolution(
+        rosen, bounds=BOUNDS, x0=X0, maxiter=20, rng=0, progressbar=False
+    )
+
+    np.testing.assert_allclose(through_minimize.x, directly.x)
+
+
+def test_differential_evolution_without_bounds_says_so():
+    with pytest.raises(TypeError, match="bounds is required"):
+        minimize(rosen, X0, method=DifferentialEvolutionConfig(), progressbar=False)
+
+
+def test_a_derivative_passed_to_differential_evolution_says_so():
+    """It cannot be forwarded, so dropping it silently would lose the caller's gradient."""
+    with pytest.raises(TypeError, match="no derivative information"):
+        minimize(
+            rosen,
+            X0,
+            method=DifferentialEvolutionConfig(),
+            bounds=BOUNDS,
+            jac=rosen_der,
+            progressbar=False,
+        )
