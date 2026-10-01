@@ -206,3 +206,36 @@ def test_a_derivative_passed_to_differential_evolution_says_so():
             jac=rosen_der,
             progressbar=False,
         )
+
+
+def test_basinhopping_rejects_an_update_interval():
+    with pytest.raises(TypeError, match="once per basin"):
+        minimize(
+            rosen,
+            X0,
+            method=BasinHoppingConfig(),
+            progressbar=False,
+            progressbar_update_interval=5,
+        )
+
+
+def test_basinhopping_tolerates_a_parent_progress_task():
+    """sequential_optimize hands one to every solver that accepts it, and basinhopping
+    supersedes it with its own nested display rather than failing."""
+    result = minimize(
+        rosen, X0, method=BasinHoppingConfig(niter=2, rng=0), progressbar=False, progress_task=3
+    )
+
+    assert np.isfinite(result.fun)
+
+
+def test_differential_evolution_rejects_an_update_interval():
+    with pytest.raises(TypeError, match="once per generation"):
+        minimize(
+            rosen,
+            X0,
+            method=DifferentialEvolutionConfig(),
+            bounds=BOUNDS,
+            progressbar=False,
+            progressbar_update_interval=5,
+        )

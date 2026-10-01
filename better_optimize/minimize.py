@@ -90,6 +90,12 @@ def minimize(
     config, solver_kwargs = config_from_kwargs(method, optimizer_kwargs)
 
     if isinstance(config, BasinHoppingConfig):
+        if progressbar_update_interval != 1:
+            raise TypeError(
+                "basinhopping reports once per basin, so it cannot take "
+                "progressbar_update_interval."
+            )
+
         return config.solver_function()(
             func=f,
             x0=x0,
@@ -116,6 +122,11 @@ def minimize(
             raise TypeError(
                 "differential_evolution uses no derivative information, so it cannot take "
                 "jac, hess, or hessp."
+            )
+        if progressbar_update_interval != 1:
+            raise TypeError(
+                "differential_evolution reports once per generation, so it cannot take "
+                "progressbar_update_interval."
             )
 
         return config.solver_function()(
