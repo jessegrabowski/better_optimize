@@ -148,7 +148,7 @@ class ToggleableProgress(Progress):
         return table
 
 
-def get_option_kwargs(method: root_method):
+def get_option_kwargs(method: root_method) -> dict:
     if method not in ROOT_MODE_KWARGS:
         raise ValueError(f"Unknown method: {method}")
 
