@@ -19,7 +19,8 @@ from scipy.optimize import OptimizeResult
 from scipy.stats import qmc
 from threadpoolctl import threadpool_limits
 
-from better_optimize.constants import MINIMIZE_MODE_KWARGS, ROOT_MODE_KWARGS
+from better_optimize.configuration import MINIMIZE_CONFIGS, MinimizeConfig
+from better_optimize.constants import ROOT_MODE_KWARGS
 from better_optimize.utilities import ToggleableProgress
 from better_optimize.wrapper import build_progress_bar
 
@@ -421,8 +422,8 @@ class _MultiStart:
             use_jac = mode_info.get("uses_jac", False) or "jac" in self._solver_kwargs
             use_rayleigh = False
         else:
-            mode_info = MINIMIZE_MODE_KWARGS.get(method, {})
-            use_jac = mode_info.get("uses_grad", False) or "jac" in self._solver_kwargs
+            config = method if isinstance(method, MinimizeConfig) else MINIMIZE_CONFIGS.get(method)
+            use_jac = bool(config and config.uses_grad) or "jac" in self._solver_kwargs
             has_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
             use_rayleigh = use_jac and has_hess
 

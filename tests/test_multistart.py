@@ -4,7 +4,7 @@ import pickle
 import threading
 import time
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -12,6 +12,7 @@ import pytest
 from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult
 
+from better_optimize.configuration import BFGSConfig, NelderMeadConfig
 from better_optimize.minimize import minimize
 from better_optimize.multi_optimize import (
     MultiStartResult,
@@ -470,3 +471,25 @@ def test_multistart_survives_crashing_solver():
         if not r.success:
             assert r.fun == np.inf
             assert "RuntimeError" in r.message
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("BFGS", True),
+        (BFGSConfig(), True),
+        ("nelder-mead", False),
+        (NelderMeadConfig(), False),
+    ],
+    ids=["string-grad", "config-grad", "string-no-grad", "config-no-grad"],
+)
+def test_the_gradient_column_follows_the_method_either_way(method, expected):
+    """A configuration carries the same capability the method name does."""
+    runner = _MultiStart(
+        solver=minimize, x0=[np.zeros(1)], solver_kwargs={"method": method}, progressbar=False
+    )
+
+    with patch("better_optimize.multi_optimize.build_progress_bar") as build:
+        runner._build_progress()
+
+    assert build.call_args.kwargs["use_jac"] is expected
