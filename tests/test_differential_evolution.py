@@ -189,15 +189,6 @@ def test_de_inverted_bounds():
         )
 
 
-def test_de_maxiter_default_scales_with_d():
-    from better_optimize.differential_evolution import _default_maxiter
-
-    assert _default_maxiter(2) == 1000
-    assert _default_maxiter(5) == 1000
-    assert _default_maxiter(10) == 2000
-    assert _default_maxiter(50) == 10000
-
-
 def test_de_sequential_polish_chain():
     """DE followed by L-BFGS-B polish via sequential_optimize."""
     res = sequential_optimize(

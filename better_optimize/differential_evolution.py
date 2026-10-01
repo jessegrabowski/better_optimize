@@ -10,7 +10,7 @@ from rich.progress import TaskID
 from scipy.optimize import OptimizeResult
 from scipy.optimize import differential_evolution as sp_differential_evolution
 
-from better_optimize.constants import DE_INIT_OPTIONS, DE_STRATEGY_OPTIONS
+from better_optimize.configuration import DifferentialEvolutionConfig
 from better_optimize.utilities import LRUCache1, check_f_is_fused_minimize
 from better_optimize.wrapper import build_progress_bar
 
@@ -36,10 +36,6 @@ def _bounds_to_array(bounds) -> np.ndarray:
 def _sample_x_from_bounds(bounds_arr: np.ndarray) -> np.ndarray:
     """Generate one midpoint within bounds for fused-function sniffing."""
     return 0.5 * (bounds_arr[:, 0] + bounds_arr[:, 1])
-
-
-def _default_maxiter(d: int) -> int:
-    return max(1000, 200 * d)
 
 
 def differential_evolution(
@@ -102,15 +98,22 @@ def differential_evolution(
     bounds_arr = _bounds_to_array(bounds)
     d = bounds_arr.shape[0]
 
-    if isinstance(strategy, str) and strategy not in DE_STRATEGY_OPTIONS:
-        raise ValueError(
-            f"strategy must be one of {DE_STRATEGY_OPTIONS} or a callable; got {strategy!r}"
-        )
-    if isinstance(init, str) and init not in DE_INIT_OPTIONS:
-        raise ValueError(f"init must be one of {DE_INIT_OPTIONS} or an array; got {init!r}")
-
-    if maxiter is None:
-        maxiter = _default_maxiter(d)
+    config = DifferentialEvolutionConfig(
+        strategy=strategy,
+        maxiter=maxiter,
+        popsize=popsize,
+        tol=tol,
+        mutation=mutation,
+        recombination=recombination,
+        rng=rng,
+        init=init,
+        atol=atol,
+        updating=updating,
+        workers=workers,
+        integrality=integrality,
+        vectorized=vectorized,
+    )
+    maxiter = config.evaluation_budget(d)
 
     sample_x = (
         np.asarray(x0, dtype=np.float64) if x0 is not None else _sample_x_from_bounds(bounds_arr)
@@ -125,7 +128,6 @@ def differential_evolution(
         dtype=sample_x.dtype.name if sample_x.dtype != object else None,
     )
 
-    owns_progress = not isinstance(progressbar, object.__class__) and isinstance(progressbar, bool)
     if isinstance(progressbar, bool):
         progress = build_progress_bar(
             description="Differential Evolution",
@@ -183,24 +185,12 @@ def differential_evolution(
         return False
 
     scipy_kwargs: dict[str, Any] = {
+        **config.optimizer_kwargs(n=d),
         "args": args,
-        "strategy": strategy,
-        "maxiter": maxiter,
-        "popsize": popsize,
-        "tol": tol,
-        "mutation": mutation,
-        "recombination": recombination,
-        "rng": rng,
         "callback": progress_callback,
+        "constraints": constraints,
         "disp": False,
         "polish": False,
-        "init": init,
-        "atol": atol,
-        "updating": updating,
-        "workers": workers,
-        "constraints": constraints,
-        "integrality": integrality,
-        "vectorized": vectorized,
     }
     if x0 is not None:
         scipy_kwargs["x0"] = np.asarray(x0, dtype=np.float64)
