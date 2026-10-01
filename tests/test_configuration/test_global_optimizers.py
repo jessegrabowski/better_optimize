@@ -7,6 +7,7 @@ from better_optimize import minimize
 from better_optimize.basinhopping import basinhopping
 from better_optimize.configuration import (
     BasinHoppingConfig,
+    DifferentialEvolutionConfig,
     LBFGSBConfig,
     NelderMeadConfig,
     NewtonCGConfig,
@@ -91,3 +92,32 @@ def test_the_inner_minimizer_budget_reaches_a_trust_region_method():
         )
 
     assert solve(maxiter=3).fun > solve(maxiter=500).fun
+
+
+@pytest.mark.parametrize("dimension, expected", [(2, 1000), (5, 1000), (10, 2000), (50, 10000)])
+def test_the_generation_budget_scales_with_the_problem_dimension(dimension, expected):
+    assert DifferentialEvolutionConfig().default_budget(dimension) == expected
+    assert DifferentialEvolutionConfig().optimizer_kwargs(n=dimension)["maxiter"] == expected
+
+
+def test_a_requested_generation_budget_wins_over_the_default():
+    assert DifferentialEvolutionConfig(maxiter=7).optimizer_kwargs(n=50)["maxiter"] == 7
+
+
+def test_an_unknown_strategy_is_rejected_at_construction():
+    with pytest.raises(ValueError, match="strategy must be one of"):
+        DifferentialEvolutionConfig(strategy="nonexistent")
+
+
+def test_an_unknown_initializer_is_rejected_at_construction():
+    with pytest.raises(ValueError, match="init must be one of"):
+        DifferentialEvolutionConfig(init="not_a_method")
+
+
+def test_a_callable_strategy_is_left_to_scipy():
+    """scipy accepts a callable building the trial vector, and checks nothing about it."""
+
+    def build_trial_vector(candidate, population):
+        return population[candidate]
+
+    assert DifferentialEvolutionConfig(strategy=build_trial_vector).strategy is build_trial_vector
