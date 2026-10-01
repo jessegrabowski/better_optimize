@@ -3,7 +3,7 @@ import importlib
 import numpy as np
 import pytest
 
-from scipy.optimize import OptimizeResult
+from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import StopOptimization
 from better_optimize.basinhopping import AllowFailureStorage, basinhopping
@@ -413,3 +413,18 @@ def test_basinhopping_callback_returning_data_does_not_stop():
     )
     # Every iteration ran; the return value is ignored.
     assert n_calls["count"] > 2
+
+
+def test_basinhopping_accepts_a_separate_gradient():
+    """A separately supplied gradient is not fused into the objective, so the gradient
+    reported at each basin has to come from calling it."""
+    result = basinhopping(
+        rosen,
+        np.array([-1.2, 1.0]),
+        niter=5,
+        rng=0,
+        minimizer_kwargs={"method": "L-BFGS-B", "jac": rosen_der},
+        progressbar=False,
+    )
+
+    assert result.fun < 1e-12
