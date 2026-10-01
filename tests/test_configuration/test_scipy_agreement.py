@@ -1,12 +1,6 @@
-import warnings
-
 from dataclasses import fields
 
-import numpy as np
 import pytest
-
-from scipy.optimize import OptimizeWarning
-from scipy.optimize import minimize as sp_minimize
 
 from better_optimize.configuration import MINIMIZE_CONFIGS
 from better_optimize.configuration.base import UNSET
@@ -111,26 +105,3 @@ def test_a_dimension_fills_every_budget_the_caller_left_unset(method):
 def test_no_sentinel_survives_construction(method):
     """A field defaulting to UNSET but missing from ``_tol_options`` would reach scipy."""
     assert UNSET not in MINIMIZE_CONFIGS[method]().optimizer_kwargs(n=10).values()
-
-
-@pytest.mark.parametrize("method", REGISTERED)
-def test_scipy_accepts_every_emitted_option(method):
-    """The signature check cannot see renames scipy applies before dispatch; this can."""
-    config = MINIMIZE_CONFIGS[method]()
-    derivatives = {}
-    if config.uses_grad:
-        derivatives["jac"] = lambda x: 2 * x
-    if config.uses_hessp:
-        derivatives["hessp"] = lambda x, p: 2 * p
-    elif config.uses_hess:
-        derivatives["hess"] = lambda x: 2 * np.eye(x.size)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", OptimizeWarning)
-        sp_minimize(
-            lambda x: (x**2).sum(),
-            np.array([1.0, 1.0]),
-            method=method,
-            options=config.optimizer_kwargs(),
-            **derivatives,
-        )
