@@ -13,11 +13,11 @@ from scipy.optimize._basinhopping import (
 
 from better_optimize.basinhopping.progress import initialize_progress_bar
 from better_optimize.basinhopping.runner import AllowFailureBasinHoppingRunner
+from better_optimize.configuration import config_from_kwargs
 from better_optimize.minimize import minimize
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
-    determine_maxiter,
     validate_provided_functions_minimize,
 )
 
@@ -116,9 +116,10 @@ def basinhopping(
     method = minimizer_kwargs.pop("method", "L-BFGS-B")
     args = minimizer_kwargs.pop("args", ())
 
-    # Use the validation helper to determine which functions to use
+    # The options stay in minimizer_kwargs for the inner minimize to resolve again.
+    config, _ = config_from_kwargs(method, minimizer_kwargs)
     use_jac, use_hess, use_hessp = validate_provided_functions_minimize(
-        method,
+        config,
         jac,
         hess,
         hessp,
@@ -151,14 +152,7 @@ def basinhopping(
     )
 
     n_vars = x0.size if hasattr(x0, "size") else len(x0)
-    if "options" not in minimizer_kwargs:
-        minimizer_kwargs["options"] = {}
-
-    minimizer_maxiter, minimizer_kwargs = determine_maxiter(minimizer_kwargs, method, n_vars)
-
-    # determine_maxiter pops the maxiters out of minimizer_kwargs, but we still need it in there for later, so we
-    # put it back in.
-    minimizer_kwargs["maxiter"] = minimizer_maxiter
+    minimizer_maxiter = config.evaluation_budget(n_vars)
 
     minimize_task = progress.add_task(
         description="Minimize",

@@ -11,6 +11,7 @@ from scipy.optimize import Bounds, LinearConstraint, NonlinearConstraint, Optimi
 from scipy.sparse.linalg import LinearOperator
 
 from better_optimize import StopOptimization
+from better_optimize.configuration import MINIMIZE_CONFIGS, BFGSConfig, config_for_method
 from better_optimize.constants import minimize_method
 from better_optimize.minimize import minimize
 from better_optimize.utilities import LRUCache1, ToggleableProgress
@@ -19,7 +20,7 @@ all_methods = list(get_args(minimize_method))
 no_grad_methods = ["nelder-mead", "powell", "CG", "BFGS", "L-BFGS-B"]
 grad_methods = ["CG", "BFGS", "L-BFGS-B", "TNC", "SLSQP"]
 hess_methods = ["trust-krylov", "trust-ncg", "trust-exact", "trust-constr", "Newton-CG"]
-hessp_methods = ["trust-krylov", "trust-ncg", "trust-constr", "Newton-CG"]
+hessp_methods = sorted(name for name, config in MINIMIZE_CONFIGS.items() if config.uses_hessp)
 
 
 def rosen(x, a, b) -> float:
@@ -428,3 +429,38 @@ def test_minimize_with_external_progressbar():
 
     assert task1 == 0
     assert task2 > 0
+
+
+@pytest.mark.parametrize("method", all_methods, ids=all_methods)
+def test_a_config_and_its_method_name_agree(method: minimize_method):
+    """The string form builds a config, so both call forms must reach the same solver."""
+    x0 = np.array([0.5, 0.5])
+    kwargs = {"jac": rosen_grad, "args": (1, 0), "progressbar": False}
+    if method in hess_methods:
+        kwargs["hess"] = rosen_hess
+
+    by_name = minimize(rosen, x0, method=method, **kwargs)
+    by_config = minimize(rosen, x0, method=config_for_method(method), **kwargs)
+
+    assert_allclose(by_name.x, by_config.x)
+
+
+def test_an_option_reaches_the_solver_through_either_call_form():
+    x0 = np.array([0.5, 0.5])
+    kwargs = {"jac": rosen_grad, "args": (1, 0), "progressbar": False}
+
+    by_name = minimize(rosen, x0, method="BFGS", gtol=1e-12, **kwargs)
+    by_config = minimize(rosen, x0, method=BFGSConfig(gtol=1e-12), **kwargs)
+
+    assert_allclose(by_name.x, by_config.x)
+    assert_allclose(by_name.x, np.ones(2), atol=1e-6)
+
+
+def test_a_misspelled_option_raises_instead_of_reaching_scipy():
+    with pytest.raises(TypeError, match="gtoll"):
+        minimize(rosen, np.array([0.5, 0.5]), method="BFGS", args=(1, 0), gtoll=1e-6)
+
+
+def test_a_config_cannot_be_combined_with_options():
+    with pytest.raises(TypeError, match=r"BFGSConfig and the option\(s\) \['gtol'\]"):
+        minimize(rosen, np.array([0.5, 0.5]), method=BFGSConfig(), args=(1, 0), gtol=1e-6)

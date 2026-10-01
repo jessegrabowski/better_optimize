@@ -20,8 +20,9 @@ from better_optimize.configuration.supports_constraints import (
     SLSQPConfig,
     TrustConstrConfig,
 )
+from better_optimize.constants import minimize_method
 
-__all__ = ["MINIMIZE_CONFIGS", "config_for_method"]
+__all__ = ["MINIMIZE_CONFIGS", "SOLVER_ARGUMENTS", "config_for_method", "config_from_kwargs"]
 
 # Keyed by the method names better_optimize already advertises, so a caller may keep
 # passing a string.
@@ -122,3 +123,60 @@ def _config_class(method: str) -> type[MinimizeConfig]:
         raise ValueError(f"Unknown method {method!r}. Must be one of: {known}")
 
     return MINIMIZE_CONFIGS[method]
+
+
+SOLVER_ARGUMENTS = frozenset({"bounds", "constraints"})
+"""Keyword arguments scipy takes beside the options dictionary, describing the problem
+rather than the method, so they never belong to a config."""
+
+
+def config_from_kwargs(
+    method: minimize_method | MinimizeConfig, kwargs: dict[str, Any]
+) -> tuple[MinimizeConfig, dict[str, Any]]:
+    """Resolve what the flat API was given into a config and scipy's remaining arguments.
+
+    Parameters
+    ----------
+    method : str or MinimizeConfig
+        A method name, or a configuration to use as given.
+    kwargs : dict
+        Everything the caller passed beside the problem and the reporting settings.
+
+    Returns
+    -------
+    config : MinimizeConfig
+        The configuration for the method.
+    solver_kwargs : dict
+        The arguments scipy takes beside its options dictionary.
+
+    Raises
+    ------
+    TypeError
+        If `method` is a configuration and an option was also passed, since the two
+        would answer the same question and neither obviously wins.
+    ValueError
+        If `method` names a method with no configuration.
+    """
+    kwargs = dict(kwargs)
+    solver_kwargs = {name: kwargs.pop(name) for name in SOLVER_ARGUMENTS & kwargs.keys()}
+
+    if isinstance(method, MinimizeConfig):
+        if kwargs:
+            raise TypeError(
+                f"Got both a {type(method).__name__} and the option(s) "
+                f"{sorted(kwargs)}. Set them on the configuration instead."
+            )
+        return method, solver_kwargs
+
+    config_class = _config_class(method)
+    # A name given both ways takes its top-level value, as promotion did.
+    kwargs = (kwargs.pop("options", None) or {}) | kwargs
+
+    # A top-level maxiter fills whichever names this method caps its work with, the way
+    # tol fills its tolerances. TNC has no maxiter of its own and spells it maxfun.
+    budget = kwargs.pop("maxiter", None)
+    if budget is not None:
+        for name in config_class._budget_options():
+            kwargs.setdefault(name, budget)
+
+    return config_for_method(method, **kwargs), solver_kwargs

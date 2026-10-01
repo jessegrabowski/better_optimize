@@ -9,6 +9,7 @@ import pytest
 
 from scipy.optimize import show_options
 
+from better_optimize.configuration import config_for_method
 from better_optimize.constants import MINIMIZE_MODE_KWARGS, TOLERANCES, minimize_method, root_method
 from better_optimize.utilities import (
     LRUCache1,
@@ -54,7 +55,7 @@ def test_validate_provided_functions_raises_on_two_hess(settings, method: minimi
         )
         with manager:
             validate_provided_functions_minimize(
-                method,
+                config_for_method(method),
                 f_grad,
                 f_hess,
                 f_hessp,
@@ -66,7 +67,8 @@ def test_validate_provided_functions_raises_on_two_hess(settings, method: minimi
 
 @pytest.mark.parametrize("method", methods, ids=methods)
 def test_validate_provided_functions_warnings(caplog, settings, method: minimize_method):
-    uses_grad, uses_hess, uses_hessp, *_ = MINIMIZE_MODE_KWARGS[method].values()
+    config = config_for_method(method)
+    uses_grad, uses_hess, uses_hessp = config.uses_grad, config.uses_hess, config.uses_hessp
 
     for f_grad, f_hess, f_hessp in settings:
         use_grad, use_hess, use_hessp = map(func_not_none, (f_grad, f_hess, f_hessp))
@@ -76,7 +78,7 @@ def test_validate_provided_functions_warnings(caplog, settings, method: minimize
             continue
 
         validate_provided_functions_minimize(
-            method,
+            config,
             f_grad,
             f_hess,
             f_hessp,
