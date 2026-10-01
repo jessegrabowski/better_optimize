@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields
-from typing import Any, ClassVar
+from typing import Any, ClassVar, get_origin
 
 import numpy as np
 
@@ -59,6 +59,39 @@ class MinimizeConfig(ABC):
     _iteration_options: ClassVar[tuple[str, ...]] = ("maxiter",)
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Check a concrete subclass's declarations against its fields, at import time.
+
+        Raises
+        ------
+        TypeError
+            If a capability flag is unset, an option group names something that is not a
+            field, or a field defaults to `UNSET` without appearing in ``_tol_options``.
+        """
+        super().__init_subclass__(**kwargs)
+
+        if getattr(cls.method_name, "__isabstractmethod__", False):
+            return
+
+        for flag in ("uses_grad", "uses_hess", "uses_hessp"):
+            if not isinstance(getattr(cls, flag, None), bool):
+                raise TypeError(f"{cls.__name__} must set {flag}")
+
+        declared = cls._declared_fields()
+        for group in ("_excluded", "_tol_options", "_iteration_options", "_evaluation_options"):
+            unknown = set(getattr(cls, group)) - declared
+            if unknown:
+                raise TypeError(f"{cls.__name__}.{group} names non-fields: {sorted(unknown)}")
+
+        unresolved = {name for name in declared if getattr(cls, name, None) is UNSET} - set(
+            cls._tol_options
+        )
+        if unresolved:
+            raise TypeError(
+                f"{cls.__name__} defaults {sorted(unresolved)} to UNSET without listing "
+                f"them in _tol_options, so the sentinel would reach scipy"
+            )
+
     def __post_init__(self) -> None:
         # COBYLA's own option is named ``tol``, so the convenience knob and one target are
         # the same field; an unset one there means "no tol given", not "fill from tol".
@@ -72,10 +105,6 @@ class MinimizeConfig(ABC):
     @abstractmethod
     def method_name(self) -> str:
         """The string scipy knows this method by."""
-
-    @classmethod
-    def _budget_options(cls) -> tuple[str, ...]:
-        return (*cls._iteration_options, *cls._evaluation_options)
 
     def default_budget(self, n: int) -> int:
         """The budget `better_optimize` applies to an `n`-dimensional problem by default."""
@@ -123,3 +152,27 @@ class MinimizeConfig(ABC):
                 return min(budgets)
 
         return self.default_budget(n)
+
+    @classmethod
+    def _budget_options(cls) -> tuple[str, ...]:
+        return (*cls._iteration_options, *cls._evaluation_options)
+
+    @classmethod
+    def _annotations(cls) -> dict[str, Any]:
+        annotations: dict[str, Any] = {}
+        for klass in reversed(cls.__mro__):
+            annotations.update(getattr(klass, "__annotations__", {}))
+
+        return annotations
+
+    @classmethod
+    def _declared_fields(cls) -> set[str]:
+        return {
+            name
+            for name, annotation in cls._annotations().items()
+            if get_origin(annotation) is not ClassVar
+        }
+
+    @staticmethod
+    def _copy_if_array(value: Any) -> Any:
+        return value.copy() if isinstance(value, np.ndarray) else value

@@ -81,3 +81,51 @@ def test_the_evaluation_budget_prefers_an_evaluation_capping_option():
 def test_an_unknown_option_is_a_type_error():
     with pytest.raises(TypeError, match="gtoll"):
         StubConfig(gtoll=1e-5)
+
+
+def test_a_subclass_must_set_every_capability_flag():
+    with pytest.raises(TypeError, match="must set uses_hessp"):
+
+        @dataclass
+        class MissingFlag(MinimizeConfig):
+            uses_grad: ClassVar[bool] = True
+            uses_hess: ClassVar[bool] = False
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            @property
+            def method_name(self) -> str:
+                return "missing-flag"
+
+
+def test_an_option_group_may_only_name_declared_fields():
+    with pytest.raises(TypeError, match=r"_tol_options names non-fields: \['nope'\]"):
+
+        @dataclass
+        class StrayTolerance(MinimizeConfig):
+            uses_grad: ClassVar[bool] = True
+            uses_hess: ClassVar[bool] = False
+            uses_hessp: ClassVar[bool] = False
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+            _tol_options: ClassVar[Mapping[str, float]] = {"nope": 1.0}
+
+            @property
+            def method_name(self) -> str:
+                return "stray-tolerance"
+
+
+def test_a_sentinel_default_must_be_listed_as_a_tolerance():
+    """Otherwise ``__post_init__`` never resolves it and the sentinel reaches scipy."""
+    with pytest.raises(TypeError, match=r"defaults \['gtol'\] to UNSET"):
+
+        @dataclass
+        class LeakedSentinel(MinimizeConfig):
+            gtol: float = UNSET
+
+            uses_grad: ClassVar[bool] = True
+            uses_hess: ClassVar[bool] = False
+            uses_hessp: ClassVar[bool] = False
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            @property
+            def method_name(self) -> str:
+                return "leaked-sentinel"
