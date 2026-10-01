@@ -1,3 +1,7 @@
+import inspect
+
+from dataclasses import fields
+
 import numpy as np
 import pytest
 
@@ -15,6 +19,49 @@ from better_optimize.configuration import (
 )
 
 BOUNDS = [(-2.0, 2.0), (-2.0, 2.0)]
+
+# What each solver takes beside its options: the problem itself, and how to report on it.
+NOT_OPTIONS = {
+    basinhopping: {"func", "x0", "minimizer_kwargs", "callback", "progressbar", "verbose"},
+    differential_evolution: {
+        "f",
+        "x0",
+        "bounds",
+        "args",
+        "constraints",
+        "callback",
+        "progressbar",
+        "progress_task",
+        "verbose",
+    },
+}
+CONFIGS = [
+    (BasinHoppingConfig, basinhopping),
+    (DifferentialEvolutionConfig, differential_evolution),
+]
+IDS = ["basinhopping", "differential_evolution"]
+
+
+def declared_options(config_class):
+    return {field.name for field in fields(config_class)} - config_class._excluded
+
+
+@pytest.mark.parametrize("config_class, solver", CONFIGS, ids=IDS)
+def test_the_fields_are_exactly_the_options_the_solver_takes(config_class, solver):
+    parameters = set(inspect.signature(solver).parameters)
+
+    assert declared_options(config_class) == parameters - NOT_OPTIONS[solver]
+
+
+@pytest.mark.parametrize("config_class, solver", CONFIGS, ids=IDS)
+def test_the_defaults_are_the_solvers_own(config_class, solver):
+    """Except the budgets, which the config owns so that `default_budget` can scale them."""
+    parameters = inspect.signature(solver).parameters
+    config = config_class()
+
+    for name in declared_options(config_class) - set(config_class._budget_options()):
+        assert getattr(config, name) == parameters[name].default, name
+
 
 X0 = np.array([-1.2, 1.0])
 
