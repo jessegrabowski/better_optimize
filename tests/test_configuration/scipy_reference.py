@@ -5,20 +5,28 @@ import textwrap
 from collections.abc import Callable
 from typing import Any
 
-from scipy.optimize import (
-    _cobyla_py,
-    _lbfgsb_py,
-    _minimize,
-    _optimize,
-    _slsqp_py,
-    _tnc,
-    _trustregion_dogleg,
-    _trustregion_exact,
-    _trustregion_krylov,
-    _trustregion_ncg,
-)
-from scipy.optimize._trustregion import _minimize_trust_region
-from scipy.optimize._trustregion_constr import minimize_trustregion_constr
+try:
+    from scipy.optimize import (
+        _cobyla_py,
+        _lbfgsb_py,
+        _minimize,
+        _optimize,
+        _slsqp_py,
+        _tnc,
+        _trustregion_dogleg,
+        _trustregion_exact,
+        _trustregion_krylov,
+        _trustregion_ncg,
+    )
+    from scipy.optimize._trustregion import _minimize_trust_region
+    from scipy.optimize._trustregion_constr import minimize_trustregion_constr
+except ImportError as error:  # pragma: no cover - only on a scipy layout change
+    raise ImportError(
+        f"scipy has moved a private module these tests read: {error}. They check the "
+        f"configs against scipy's real signatures, so a rename means the configs need "
+        f"re-pinning against the new layout. Do not skip this -- a skipped agreement "
+        f"test is how the configs silently drift out of step with scipy."
+    ) from error
 
 # Supplied positionally or by keyword by ``scipy.optimize.minimize`` itself, so they are
 # never legal members of the ``options`` dict. ``grad`` is trust-constr's name for ``jac``.
