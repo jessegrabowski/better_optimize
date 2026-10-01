@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass
 from typing import ClassVar
 
 import pytest
@@ -7,7 +7,7 @@ import pytest
 from better_optimize.configuration.base import UNSET, MinimizeConfig
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class StubConfig(MinimizeConfig):
     """Minimal concrete subclass, so the base's own behavior can be tested directly."""
 
@@ -78,6 +78,12 @@ def test_the_evaluation_budget_prefers_an_evaluation_capping_option():
     assert StubConfig().evaluation_budget(10) == 2000
 
 
+def test_a_config_cannot_be_written_to_after_construction():
+    """One config is shared across every start in a multi-start run."""
+    with pytest.raises(FrozenInstanceError):
+        StubConfig().gtol = 1.0
+
+
 def test_an_unknown_option_is_a_type_error():
     with pytest.raises(TypeError, match="gtoll"):
         StubConfig(gtoll=1e-5)
@@ -86,7 +92,7 @@ def test_an_unknown_option_is_a_type_error():
 def test_a_subclass_must_set_every_capability_flag():
     with pytest.raises(TypeError, match="must set uses_hessp"):
 
-        @dataclass
+        @dataclass(frozen=True, eq=False)
         class MissingFlag(MinimizeConfig):
             uses_grad: ClassVar[bool] = True
             uses_hess: ClassVar[bool] = False
@@ -100,7 +106,7 @@ def test_a_subclass_must_set_every_capability_flag():
 def test_an_option_group_may_only_name_declared_fields():
     with pytest.raises(TypeError, match=r"_tol_options names non-fields: \['nope'\]"):
 
-        @dataclass
+        @dataclass(frozen=True, eq=False)
         class StrayTolerance(MinimizeConfig):
             uses_grad: ClassVar[bool] = True
             uses_hess: ClassVar[bool] = False
@@ -117,7 +123,7 @@ def test_a_sentinel_default_must_be_listed_as_a_tolerance():
     """Otherwise ``__post_init__`` never resolves it and the sentinel reaches scipy."""
     with pytest.raises(TypeError, match=r"defaults \['gtol'\] to UNSET"):
 
-        @dataclass
+        @dataclass(frozen=True, eq=False)
         class LeakedSentinel(MinimizeConfig):
             gtol: float = UNSET
 

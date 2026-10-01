@@ -15,7 +15,7 @@ from better_optimize.configuration.base import (
 __all__ = ["COBYLAConfig", "SLSQPConfig", "TrustConstrConfig"]
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class COBYLAConfig(MinimizeConfig):
     r"""Constrained optimization by linear approximation, using no derivative information.
 
@@ -65,7 +65,7 @@ class COBYLAConfig(MinimizeConfig):
         return 1000
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class SLSQPConfig(MinimizeConfig):
     r"""Sequential least squares programming, for problems with equality and bound constraints.
 
@@ -113,7 +113,7 @@ class SLSQPConfig(MinimizeConfig):
         return 100
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TrustConstrConfig(MinimizeConfig):
     """Trust region interior point method, the most capable of the constrained solvers.
 

@@ -9,7 +9,7 @@ from better_optimize.configuration.base import UNSET, MinimizeConfig
 __all__ = ["NelderMeadConfig", "PowellConfig"]
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class NelderMeadConfig(MinimizeConfig):
     """Nelder-Mead simplex, a direct search method using no derivative information.
 
@@ -59,7 +59,7 @@ class NelderMeadConfig(MinimizeConfig):
         return "nelder-mead"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class PowellConfig(MinimizeConfig):
     """Powell's conjugate direction method, a direct search using no derivative information.
 

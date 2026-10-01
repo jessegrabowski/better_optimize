@@ -15,7 +15,7 @@ from better_optimize.configuration.base import (
 __all__ = ["BFGSConfig", "CGConfig", "LBFGSBConfig", "TNCConfig"]
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class BFGSConfig(MinimizeConfig):
     r"""Broyden-Fletcher-Goldfarb-Shanno, a quasi-Newton method with a full inverse Hessian.
 
@@ -82,7 +82,7 @@ class BFGSConfig(MinimizeConfig):
         return "BFGS"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class CGConfig(MinimizeConfig):
     r"""Nonlinear conjugate gradient, Polak-Ribiere variant.
 
@@ -136,7 +136,7 @@ class CGConfig(MinimizeConfig):
         return "CG"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class LBFGSBConfig(MinimizeConfig):
     r"""Limited-memory BFGS with box constraints.
 
@@ -201,7 +201,7 @@ class LBFGSBConfig(MinimizeConfig):
         return "L-BFGS-B"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TNCConfig(MinimizeConfig):
     r"""Truncated Newton with box constraints, wrapping Nash's Fortran code.
 

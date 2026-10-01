@@ -23,7 +23,7 @@ class _Unset:
 UNSET: Any = _Unset()
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class MinimizeConfig(ABC):
     """One scipy ``minimize`` method, its options, and what it needs from the objective.
 
@@ -35,6 +35,11 @@ class MinimizeConfig(ABC):
     An option the caller leaves unset is omitted from :meth:`optimizer_kwargs` rather than
     sent, so scipy applies its own default and a config never names an option the installed
     scipy does not have.
+
+    Instances are frozen and compared by identity. One config is often shared across many
+    runs -- `multi_optimize` splats a single set of solver arguments into every start --
+    so a config that could be written to would carry one run's state into the next. Array
+    fields make value equality impossible, so there is none.
 
     Methods disagree about what their work budget is called, so there is no ``maxiter``
     field here. Each subclass lists the names scipy accepts in ``_iteration_options`` and
@@ -103,7 +108,8 @@ class MinimizeConfig(ABC):
 
         for name, scipy_default in self._tol_options.items():
             if getattr(self, name) is UNSET:
-                setattr(self, name, scipy_default if requested is None else requested)
+                resolved = scipy_default if requested is None else requested
+                object.__setattr__(self, name, resolved)
 
     @property
     @abstractmethod

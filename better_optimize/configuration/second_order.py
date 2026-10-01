@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class NewtonCGConfig(MinimizeConfig):
     r"""Newton conjugate gradient, solving the Newton step iteratively.
 
@@ -72,7 +72,7 @@ class NewtonCGConfig(MinimizeConfig):
         return "Newton-CG"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TrustRegionConfig(MinimizeConfig, ABC):
     """Shared options for the four trust-region methods.
 
@@ -128,7 +128,7 @@ class TrustRegionConfig(MinimizeConfig, ABC):
     _tol_options: ClassVar[Mapping[str, float]] = {"gtol": 1e-4}
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class DoglegConfig(TrustRegionConfig):
     """Trust region with the dogleg subproblem, needing a positive definite Hessian.
 
@@ -145,7 +145,7 @@ class DoglegConfig(TrustRegionConfig):
         return "dogleg"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TrustNCGConfig(TrustRegionConfig):
     """Trust region with the Steihaug conjugate gradient subproblem.
 
@@ -161,7 +161,7 @@ class TrustNCGConfig(TrustRegionConfig):
         return "trust-ncg"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TrustExactConfig(TrustRegionConfig):
     """Trust region solving the subproblem almost exactly, needing a callable Hessian.
 
@@ -177,7 +177,7 @@ class TrustExactConfig(TrustRegionConfig):
         return "trust-exact"
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class TrustKrylovConfig(TrustRegionConfig):
     """Trust region with the trlib Krylov subproblem, suited to large problems.
 
