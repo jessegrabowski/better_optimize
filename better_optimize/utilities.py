@@ -9,11 +9,10 @@ from rich.box import SIMPLE_HEAD
 from rich.progress import Progress, Task
 from rich.table import Column, Table
 
+from better_optimize.configuration.base import MinimizeConfig
 from better_optimize.constants import (
-    MINIMIZE_MODE_KWARGS,
     ROOT_MODE_KWARGS,
     TOLERANCES,
-    minimize_method,
     root_method,
 )
 
@@ -149,19 +148,15 @@ class ToggleableProgress(Progress):
         return table
 
 
-def get_option_kwargs(method: minimize_method | root_method):
-    if method in MINIMIZE_MODE_KWARGS.keys():
-        options_kwargs = MINIMIZE_MODE_KWARGS[method]
-    elif method in ROOT_MODE_KWARGS.keys():
-        options_kwargs = ROOT_MODE_KWARGS[method]
-    else:
+def get_option_kwargs(method: root_method) -> dict:
+    if method not in ROOT_MODE_KWARGS:
         raise ValueError(f"Unknown method: {method}")
 
-    return options_kwargs
+    return ROOT_MODE_KWARGS[method]
 
 
 def validate_provided_functions_minimize(
-    method: minimize_method,
+    config: MinimizeConfig,
     f_grad: Callable[[np.ndarray], np.ndarray] | None,
     f_hess: Callable[[np.ndarray], np.ndarray] | None,
     f_hessp: Callable[[np.ndarray], np.ndarray] | None,
@@ -170,7 +165,8 @@ def validate_provided_functions_minimize(
     verbose=True,
 ) -> tuple[bool, bool, bool]:
     has_grad, has_hess, has_hessp = map(lambda f: f is not None, [f_grad, f_hess, f_hessp])
-    uses_grad, uses_hess, uses_hessp, *_ = MINIMIZE_MODE_KWARGS[method].values()
+    method = config.method_name
+    uses_grad, uses_hess, uses_hessp = config.uses_grad, config.uses_hess, config.uses_hessp
 
     # Handle fused outputs first
     if has_fused_f_grad_hess:
@@ -196,11 +192,6 @@ def validate_provided_functions_minimize(
                 "but a gradient function was also provided. The gradient function will be ignored."
             )
         has_grad = True  # fused (loss, grad) disables external grad
-
-    if method not in MINIMIZE_MODE_KWARGS:
-        raise ValueError(
-            f"Method {method} not recognized. Must be one of {list(MINIMIZE_MODE_KWARGS.keys())}"
-        )
 
     if has_hess and has_hessp:
         raise ValueError(
@@ -338,9 +329,7 @@ def check_f_is_fused_root(f, x0, args) -> bool:
     return ret_val
 
 
-def determine_maxiter(
-    optimizer_kwargs: dict, method: minimize_method | root_method, n_vars
-) -> tuple[int, dict]:
+def determine_maxiter(optimizer_kwargs: dict, method: root_method, n_vars) -> tuple[int, dict]:
     MAXITER_KWARGS = ["maxiter", "maxfun", "maxfev"]
     method_info = get_option_kwargs(method)
     maxiter_kwargs = [x for x in method_info["valid_options"] if x in MAXITER_KWARGS]
@@ -360,7 +349,7 @@ def determine_maxiter(
     return maxiter, optimizer_kwargs
 
 
-def kwargs_to_options(optimizer_kwargs: dict, method: minimize_method | root_method) -> dict:
+def kwargs_to_options(optimizer_kwargs: dict, method: root_method) -> dict:
     optimizer_kwargs = deepcopy(optimizer_kwargs)
 
     NEVER_AUTO_PROMOTE = ["bounds", "tol", "jac_options"]
@@ -402,7 +391,7 @@ def kwargs_to_jac_options(optimizer_kwargs: dict, method: root_method) -> dict:
     return optimizer_kwargs
 
 
-def determine_tolerance(optimizer_kwargs: dict, method: minimize_method | root_method) -> dict:
+def determine_tolerance(optimizer_kwargs: dict, method: root_method) -> dict:
     tol = optimizer_kwargs.pop("tol", 1e-8)
     optimizer_kwargs["tol"] = tol
     method_options = get_option_kwargs(method)["valid_options"]
