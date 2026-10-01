@@ -423,7 +423,8 @@ class _MultiStart:
             use_rayleigh = False
         else:
             config = method if isinstance(method, MinimizeConfig) else MINIMIZE_CONFIGS.get(method)
-            use_jac = bool(config and config.uses_grad) or "jac" in self._solver_kwargs
+            uses_grad = config is not None and config.uses_grad
+            use_jac = uses_grad or "jac" in self._solver_kwargs
             has_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
             use_rayleigh = use_jac and has_hess
 
