@@ -89,10 +89,13 @@ def test_the_inner_minimizer_decides_which_derivatives_are_used(
 
 def test_the_inner_config_is_not_emitted_as_an_option():
     """It reaches scipy as ``minimizer_kwargs["method"]``, not in the options."""
-    options = BasinHoppingConfig(tol=1e-9).optimizer_kwargs(n=2)
+    assert "minimizer_config" not in BasinHoppingConfig().optimizer_kwargs(n=2)
 
-    assert "minimizer_config" not in options
-    assert "tol" not in options
+
+def test_a_tolerance_belongs_on_the_inner_minimizer():
+    """basinhopping has none of its own, so accepting one would discard it."""
+    with pytest.raises(TypeError, match="no tolerance of its own"):
+        BasinHoppingConfig(tol=1e-9)
 
 
 def test_an_option_the_caller_left_unset_is_omitted():

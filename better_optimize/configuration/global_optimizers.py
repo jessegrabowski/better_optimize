@@ -86,6 +86,15 @@ class BasinHoppingConfig(MinimizeConfig):
     _excluded: ClassVar[frozenset[str]] = frozenset({"tol", "minimizer_config"})
     _iteration_options: ClassVar[tuple[str, ...]] = ("niter",)
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        if self.tol is not None:
+            raise TypeError(
+                "basinhopping has no tolerance of its own. Set one on minimizer_config, "
+                f"as {type(self.minimizer_config).__name__}(tol={self.tol!r})."
+            )
+
     @property
     def method_name(self) -> str:
         return "basinhopping"
