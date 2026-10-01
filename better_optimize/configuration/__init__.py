@@ -5,6 +5,7 @@ from better_optimize.configuration.first_order import (
     LBFGSBConfig,
     TNCConfig,
 )
+from better_optimize.configuration.global_optimizers import BasinHoppingConfig
 from better_optimize.configuration.gradient_free import NelderMeadConfig, PowellConfig
 from better_optimize.configuration.registry import (
     MINIMIZE_CONFIGS,
@@ -30,6 +31,7 @@ __all__ = [
     "MINIMIZE_CONFIGS",
     "SOLVER_ARGUMENTS",
     "BFGSConfig",
+    "BasinHoppingConfig",
     "COBYLAConfig",
     "CGConfig",
     "DoglegConfig",
