@@ -6,13 +6,12 @@ import numpy as np
 import pytest
 
 from better_optimize.configuration import config_for_method
-from better_optimize.constants import TOLERANCES, minimize_method, root_method
+from better_optimize.constants import minimize_method, root_method
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
     check_f_is_fused_root,
     determine_maxiter,
-    determine_tolerance,
     get_option_kwargs,
     kwargs_to_jac_options,
     kwargs_to_options,
@@ -121,18 +120,6 @@ def test_determine_maxiter(method: root_method):
     for kwarg in all_maxiter_kwargs:
         if kwarg not in maxiter_kwargs:
             assert kwarg not in optimizer_kwargs["options"]
-
-
-@pytest.mark.parametrize("method", root_methods, ids=root_methods)
-def test_determine_tolerance(method: root_method):
-    optimizer_kwargs = {"options": {}, "tol": 1e-8}
-    optimizer_kwargs = determine_tolerance(optimizer_kwargs, method)
-    options = optimizer_kwargs["options"]
-
-    tolerances = [name for name in get_option_kwargs(method)["valid_options"] if name in TOLERANCES]
-
-    assert optimizer_kwargs["tol"] == 1e-8
-    assert all(options[name] == 1e-8 for name in tolerances)
 
 
 def test_kwargs_to_options():

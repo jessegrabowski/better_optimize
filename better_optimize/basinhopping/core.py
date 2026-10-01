@@ -251,7 +251,8 @@ def basinhopping(
 
     grad_norm_at_min = 0.0
     if use_jac:
-        grad_val = f_cached.grad(bh.x, *args)
+        # The cache can only split a gradient off an objective that returns one.
+        grad_val = f_cached.grad(bh.x, *args) if f_returns_list else jac(bh.x, *args)
         grad_norm_at_min = np.linalg.norm(grad_val)
 
     # Update the progress bar with initial values

@@ -43,6 +43,10 @@ MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
     "trust-krylov": TrustKrylovConfig,
 }
 
+# scipy lowercases the method name before dispatching, so a caller who writes "bfgs" gets
+# BFGS there and should get it here.
+_CONFIGS_BY_LOWER_NAME = {name.lower(): config for name, config in MINIMIZE_CONFIGS.items()}
+
 
 @overload
 def config_for_method(method: Literal["nelder-mead"], **options: Any) -> NelderMeadConfig: ...
@@ -118,11 +122,12 @@ def config_for_method(method: str, **options: Any) -> MinimizeConfig:
 
 
 def _config_class(method: str) -> type[MinimizeConfig]:
-    if method not in MINIMIZE_CONFIGS:
+    config_class = _CONFIGS_BY_LOWER_NAME.get(method.lower())
+    if config_class is None:
         known = ", ".join(sorted(MINIMIZE_CONFIGS))
         raise ValueError(f"Unknown method {method!r}. Must be one of: {known}")
 
-    return MINIMIZE_CONFIGS[method]
+    return config_class
 
 
 SOLVER_ARGUMENTS = frozenset({"bounds", "constraints"})

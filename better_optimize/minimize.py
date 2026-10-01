@@ -8,7 +8,12 @@ from scipy.optimize import OptimizeResult
 from scipy.optimize import minimize as sp_minimize
 from scipy.sparse.linalg import LinearOperator
 
-from better_optimize.configuration import MinimizeConfig, config_from_kwargs
+from better_optimize.configuration import (
+    BasinHoppingConfig,
+    DifferentialEvolutionConfig,
+    MinimizeConfig,
+    config_from_kwargs,
+)
 from better_optimize.constants import minimize_method
 from better_optimize.utilities import (
     LRUCache1,
@@ -83,6 +88,59 @@ def minimize(
     """
     n_vars = len(x0)
     config, solver_kwargs = config_from_kwargs(method, optimizer_kwargs)
+
+    if isinstance(config, BasinHoppingConfig):
+        if progressbar_update_interval != 1:
+            raise TypeError(
+                "basinhopping reports once per basin, so it cannot take "
+                "progressbar_update_interval."
+            )
+
+        return config.solver_function()(
+            func=f,
+            x0=x0,
+            minimizer_kwargs={
+                "method": config.minimizer_config,
+                "jac": jac,
+                "hess": hess,
+                "hessp": hessp,
+                "args": () if args is None else args,
+                **solver_kwargs,
+            },
+            callback=callback,
+            progressbar=progressbar,
+            verbose=verbose,
+            **config.optimizer_kwargs(n=n_vars),
+        )
+
+    if isinstance(config, DifferentialEvolutionConfig):
+        if "bounds" not in solver_kwargs:
+            raise TypeError(
+                "differential_evolution searches a bounded region, so bounds is required."
+            )
+        if jac is not None or hess is not None or hessp is not None:
+            raise TypeError(
+                "differential_evolution uses no derivative information, so it cannot take "
+                "jac, hess, or hessp."
+            )
+        if progressbar_update_interval != 1:
+            raise TypeError(
+                "differential_evolution reports once per generation, so it cannot take "
+                "progressbar_update_interval."
+            )
+
+        return config.solver_function()(
+            f=f,
+            x0=x0,
+            args=() if args is None else args,
+            callback=callback,
+            progressbar=progressbar,
+            progress_task=progress_task,
+            verbose=verbose,
+            **solver_kwargs,
+            **config.optimizer_kwargs(n=n_vars),
+        )
+
     has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(f, x0, args)
 
     use_grad, use_hess, use_hessp = validate_provided_functions_minimize(

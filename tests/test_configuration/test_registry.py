@@ -33,9 +33,20 @@ def test_options_reach_the_config():
     assert config_for_method("BFGS", gtol=1e-9).gtol == 1e-9
 
 
+@pytest.mark.parametrize("method", REGISTERED)
+def test_a_method_name_may_be_written_in_any_case(method):
+    assert config_for_method(method.lower()).method_name == method
+    assert config_for_method(method.upper()).method_name == method
+
+
+def test_no_two_methods_differ_only_in_case():
+    """A collision would drop one config out of the case-insensitive lookup silently."""
+    assert len({method.lower() for method in MINIMIZE_CONFIGS}) == len(MINIMIZE_CONFIGS)
+
+
 def test_an_unknown_method_names_the_ones_that_exist():
-    with pytest.raises(ValueError, match="Unknown method 'bfgs'"):
-        config_for_method("bfgs")
+    with pytest.raises(ValueError, match="Unknown method 'nonsense'"):
+        config_for_method("nonsense")
 
 
 def test_an_unknown_option_is_a_type_error():
@@ -107,5 +118,5 @@ def test_a_name_given_both_ways_takes_its_top_level_value():
 
 
 def test_an_unknown_method_names_the_ones_that_exist_from_kwargs():
-    with pytest.raises(ValueError, match="Unknown method 'bfgs'"):
-        config_from_kwargs("bfgs", {"maxiter": 5})
+    with pytest.raises(ValueError, match="Unknown method 'nonsense'"):
+        config_from_kwargs("nonsense", {"maxiter": 5})

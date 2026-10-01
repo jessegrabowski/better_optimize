@@ -74,16 +74,19 @@ class MinimizeConfig(ABC):
         Raises
         ------
         TypeError
-            If a capability flag is unset, an option group names something that is not a
-            field, or a field defaults to `UNSET` without appearing in ``_tol_options``.
+            If a capability flag is neither a bool nor a property, an option group names
+            something that is not a field, or a field defaults to `UNSET` without
+            appearing in ``_tol_options``.
         """
         super().__init_subclass__(**kwargs)
 
         if getattr(cls.method_name, "__isabstractmethod__", False):
             return
 
+        # A config composing another delegates its capabilities, so a property declares
+        # them just as a ClassVar does.
         for flag in ("uses_grad", "uses_hess", "uses_hessp"):
-            if not isinstance(getattr(cls, flag, None), bool):
+            if not isinstance(getattr(cls, flag, None), bool | property):
                 raise TypeError(f"{cls.__name__} must set {flag}")
 
         declared = cls._declared_fields()

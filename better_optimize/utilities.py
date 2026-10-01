@@ -12,7 +12,6 @@ from rich.table import Column, Table
 from better_optimize.configuration.base import MinimizeConfig
 from better_optimize.constants import (
     ROOT_MODE_KWARGS,
-    TOLERANCES,
     root_method,
 )
 
@@ -387,19 +386,6 @@ def kwargs_to_jac_options(optimizer_kwargs: dict, method: root_method) -> dict:
     for kwarg in provided_kwargs:
         if kwarg in method_jac_kwargs:
             optimizer_kwargs["options"]["jac_options"][kwarg] = optimizer_kwargs.pop(kwarg)
-
-    return optimizer_kwargs
-
-
-def determine_tolerance(optimizer_kwargs: dict, method: root_method) -> dict:
-    tol = optimizer_kwargs.pop("tol", 1e-8)
-    optimizer_kwargs["tol"] = tol
-    method_options = get_option_kwargs(method)["valid_options"]
-    method_tolerances = [tol_type for tol_type in method_options if tol_type in TOLERANCES]
-
-    for tol_name in method_tolerances:
-        if tol_name not in optimizer_kwargs["options"]:
-            optimizer_kwargs["options"][tol_name] = tol
 
     return optimizer_kwargs
 
