@@ -75,3 +75,19 @@ def test_an_array_option_is_not_written_through_by_the_solver():
 
     assert np.array_equal(config.direc, np.eye(X0.size))
     assert np.array_equal(directions, np.eye(X0.size))
+
+
+@pytest.mark.parametrize(
+    "method", [m for m in REGISTERED if MINIMIZE_CONFIGS[m]._evaluation_options]
+)
+def test_the_evaluation_budget_bounds_what_the_solver_spends(method):
+    """The wrapper counts objective calls against this, so it has to track the option
+    scipy actually caps evaluations with."""
+    config_class = MINIMIZE_CONFIGS[method]
+    budget = 30
+    config = config_class(**dict.fromkeys(config_class._evaluation_options, budget))
+
+    result = solve(config, options=config.optimizer_kwargs())
+
+    assert config.evaluation_budget(X0.size) == budget
+    assert result.nfev <= budget + X0.size
