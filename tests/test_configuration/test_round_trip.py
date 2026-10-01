@@ -6,7 +6,7 @@ import pytest
 from scipy.optimize import OptimizeWarning, rosen, rosen_der, rosen_hess, rosen_hess_prod
 from scipy.optimize import minimize as sp_minimize
 
-from better_optimize.configuration import MINIMIZE_CONFIGS
+from better_optimize.configuration import MINIMIZE_CONFIGS, PowellConfig
 
 REGISTERED = sorted(MINIMIZE_CONFIGS)
 
@@ -64,3 +64,14 @@ def test_scipy_accepts_every_emitted_option(method):
 
     assert np.isfinite(result.fun)
     assert result.fun < rosen(X0)
+
+
+def test_an_array_option_is_not_written_through_by_the_solver():
+    """scipy reorders Powell's ``direc`` in place, which would leak one run into the next."""
+    directions = np.eye(X0.size)
+    config = PowellConfig(direc=directions)
+
+    solve(config, options=config.optimizer_kwargs(n=X0.size))
+
+    assert np.array_equal(config.direc, np.eye(X0.size))
+    assert np.array_equal(directions, np.eye(X0.size))

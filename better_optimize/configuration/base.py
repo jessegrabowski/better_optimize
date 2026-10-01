@@ -121,8 +121,10 @@ class MinimizeConfig(ABC):
             authoritative rather than advisory. Defaults to None, which emits only the
             budgets the caller set and leaves scipy to apply its own.
         """
+        # scipy writes through some array options -- Powell reorders ``direc`` in place --
+        # so a config reused across runs would carry one run's state into the next.
         options = {
-            field.name: getattr(self, field.name)
+            field.name: self._copy_if_array(getattr(self, field.name))
             for field in fields(self)
             if field.name not in self._excluded
         }
@@ -156,6 +158,10 @@ class MinimizeConfig(ABC):
     @classmethod
     def _budget_options(cls) -> tuple[str, ...]:
         return (*cls._iteration_options, *cls._evaluation_options)
+
+    @staticmethod
+    def _copy_if_array(value: Any) -> Any:
+        return value.copy() if isinstance(value, np.ndarray) else value
 
     @classmethod
     def _annotations(cls) -> dict[str, Any]:
