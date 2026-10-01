@@ -44,6 +44,9 @@ class MinimizeConfig(ABC):
     uses_hessp: ClassVar[bool]
 
     # Taken from scipy's own tol mapping in ``_minimize.py``, not from its documentation.
+    _excluded: ClassVar[frozenset[str]] = frozenset({"tol"})
+    """Fields that are not options of the method."""
+
     _tol_options: ClassVar[tuple[str, ...]] = ()
     _budget_options: ClassVar[tuple[str, ...]] = ("maxiter",)
 
@@ -53,9 +56,15 @@ class MinimizeConfig(ABC):
         """The string scipy knows this method by."""
 
     @property
-    @abstractmethod
     def optimizer_kwargs(self) -> dict[str, Any]:
         """The options dictionary to hand to scipy, with ``tol`` already distributed."""
+        options = {
+            field.name: getattr(self, field.name)
+            for field in fields(self)
+            if field.name not in self._excluded
+        }
+
+        return self._finalize(options)
 
     def solver_function(self) -> Callable[..., Any]:
         """The callable that runs this configuration."""

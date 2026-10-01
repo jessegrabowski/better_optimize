@@ -65,6 +65,14 @@ def test_budget_options_are_unset_so_better_optimize_can_choose(method):
 
 
 @pytest.mark.parametrize("method", REGISTERED)
+def test_every_declared_option_reaches_scipy(method):
+    config_class = MINIMIZE_CONFIGS[method]
+    config = config_class(**{name: 123 for name in config_class._budget_options})
+
+    assert set(config.optimizer_kwargs) == declared_options(method)
+
+
+@pytest.mark.parametrize("method", REGISTERED)
 def test_tol_options_match_scipys_own_dispatch(method):
     assert MINIMIZE_CONFIGS[method]._tol_options == tol_targets(method)
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import numpy as np
 
@@ -57,21 +57,6 @@ class NelderMeadConfig(MinimizeConfig):
     def method_name(self) -> str:
         return "nelder-mead"
 
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "maxiter": self.maxiter,
-                "maxfev": self.maxfev,
-                "disp": self.disp,
-                "return_all": self.return_all,
-                "initial_simplex": self.initial_simplex,
-                "xatol": self.xatol,
-                "fatol": self.fatol,
-                "adaptive": self.adaptive,
-            }
-        )
-
 
 @dataclass
 class PowellConfig(MinimizeConfig):
@@ -120,17 +105,3 @@ class PowellConfig(MinimizeConfig):
 
     def default_maxiter(self, n: int) -> int:
         return 1000 * n
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "xtol": self.xtol,
-                "ftol": self.ftol,
-                "maxiter": self.maxiter,
-                "maxfev": self.maxfev,
-                "disp": self.disp,
-                "direc": self.direc,
-                "return_all": self.return_all,
-            }
-        )

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import numpy as np
 
@@ -50,6 +50,7 @@ class COBYLAConfig(MinimizeConfig):
     uses_hess: ClassVar[bool] = False
     uses_hessp: ClassVar[bool] = False
 
+    _excluded: ClassVar[frozenset[str]] = frozenset()
     _tol_options: ClassVar[tuple[str, ...]] = ("tol",)
 
     @property
@@ -58,19 +59,6 @@ class COBYLAConfig(MinimizeConfig):
 
     def default_maxiter(self, n: int) -> int:
         return 1000
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "rhobeg": self.rhobeg,
-                "tol": self.tol,
-                "maxiter": self.maxiter,
-                "disp": self.disp,
-                "catol": self.catol,
-                "f_target": self.f_target,
-            }
-        )
 
 
 @dataclass
@@ -119,20 +107,6 @@ class SLSQPConfig(MinimizeConfig):
 
     def default_maxiter(self, n: int) -> int:
         return 100
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "maxiter": self.maxiter,
-                "ftol": self.ftol,
-                "iprint": self.iprint,
-                "disp": self.disp,
-                "eps": self.eps,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "workers": self.workers,
-            }
-        )
 
 
 @dataclass
@@ -205,24 +179,3 @@ class TrustConstrConfig(MinimizeConfig):
 
     def default_maxiter(self, n: int) -> int:
         return 1000
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "xtol": self.xtol,
-                "gtol": self.gtol,
-                "barrier_tol": self.barrier_tol,
-                "sparse_jacobian": self.sparse_jacobian,
-                "maxiter": self.maxiter,
-                "verbose": self.verbose,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "initial_constr_penalty": self.initial_constr_penalty,
-                "initial_tr_radius": self.initial_tr_radius,
-                "initial_barrier_parameter": self.initial_barrier_parameter,
-                "initial_barrier_tolerance": self.initial_barrier_tolerance,
-                "factorization_method": self.factorization_method,
-                "disp": self.disp,
-                "workers": self.workers,
-            }
-        )

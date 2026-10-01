@@ -1,6 +1,6 @@
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import numpy as np
 
@@ -65,21 +65,6 @@ class NewtonCGConfig(MinimizeConfig):
     def method_name(self) -> str:
         return "Newton-CG"
 
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "xtol": self.xtol,
-                "eps": self.eps,
-                "maxiter": self.maxiter,
-                "disp": self.disp,
-                "return_all": self.return_all,
-                "c1": self.c1,
-                "c2": self.c2,
-                "workers": self.workers,
-            }
-        )
-
 
 @dataclass
 class TrustRegionConfig(MinimizeConfig, ABC):
@@ -135,23 +120,6 @@ class TrustRegionConfig(MinimizeConfig, ABC):
     uses_hess: ClassVar[bool] = True
 
     _tol_options: ClassVar[tuple[str, ...]] = ("gtol",)
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "initial_trust_radius": self.initial_trust_radius,
-                "max_trust_radius": self.max_trust_radius,
-                "eta": self.eta,
-                "gtol": self.gtol,
-                "maxiter": self.maxiter,
-                "disp": self.disp,
-                "return_all": self.return_all,
-                "inexact": self.inexact,
-                "workers": self.workers,
-                "subproblem_maxiter": self.subproblem_maxiter,
-            }
-        )
 
 
 @dataclass

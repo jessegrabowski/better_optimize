@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import numpy as np
 
@@ -79,25 +79,6 @@ class BFGSConfig(MinimizeConfig):
     def method_name(self) -> str:
         return "BFGS"
 
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "gtol": self.gtol,
-                "norm": self.norm,
-                "eps": self.eps,
-                "maxiter": self.maxiter,
-                "disp": self.disp,
-                "return_all": self.return_all,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "xrtol": self.xrtol,
-                "c1": self.c1,
-                "c2": self.c2,
-                "hess_inv0": self.hess_inv0,
-                "workers": self.workers,
-            }
-        )
-
 
 @dataclass
 class CGConfig(MinimizeConfig):
@@ -151,23 +132,6 @@ class CGConfig(MinimizeConfig):
     @property
     def method_name(self) -> str:
         return "CG"
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "gtol": self.gtol,
-                "norm": self.norm,
-                "eps": self.eps,
-                "maxiter": self.maxiter,
-                "disp": self.disp,
-                "return_all": self.return_all,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "c1": self.c1,
-                "c2": self.c2,
-                "workers": self.workers,
-            }
-        )
 
 
 @dataclass
@@ -228,22 +192,6 @@ class LBFGSBConfig(MinimizeConfig):
     @property
     def method_name(self) -> str:
         return "L-BFGS-B"
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "maxcor": self.maxcor,
-                "ftol": self.ftol,
-                "gtol": self.gtol,
-                "eps": self.eps,
-                "maxiter": self.maxiter,
-                "maxfun": self.maxfun,
-                "maxls": self.maxls,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "workers": self.workers,
-            }
-        )
 
 
 @dataclass
@@ -331,27 +279,3 @@ class TNCConfig(MinimizeConfig):
 
     def default_maxiter(self, n: int) -> int:
         return max(100, 10 * n)
-
-    @property
-    def optimizer_kwargs(self) -> dict[str, Any]:
-        return self._finalize(
-            {
-                "eps": self.eps,
-                "scale": self.scale,
-                "offset": self.offset,
-                "mesg_num": self.mesg_num,
-                "maxCGit": self.maxCGit,
-                "eta": self.eta,
-                "stepmx": self.stepmx,
-                "accuracy": self.accuracy,
-                "minfev": self.minfev,
-                "ftol": self.ftol,
-                "xtol": self.xtol,
-                "gtol": self.gtol,
-                "rescale": self.rescale,
-                "disp": self.disp,
-                "finite_diff_rel_step": self.finite_diff_rel_step,
-                "maxfun": self.maxfun,
-                "workers": self.workers,
-            }
-        )
