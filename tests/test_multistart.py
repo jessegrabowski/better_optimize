@@ -16,6 +16,8 @@ from better_optimize.configuration import (
     BasinHoppingConfig,
     BFGSConfig,
     DifferentialEvolutionConfig,
+    HybrConfig,
+    KrylovConfig,
     LBFGSBConfig,
     NelderMeadConfig,
 )
@@ -539,3 +541,27 @@ def test_a_config_runs_through_every_start(method, solver_kwargs):
 
     assert len(result.results) == 3
     assert result.best.fun < 1e-4
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("hybr", True),
+        ("HYBR", True),
+        (HybrConfig(), True),
+        ("krylov", False),
+        (KrylovConfig(), False),
+    ],
+    ids=["name", "name-uppercase", "config", "name-no-jac", "config-no-jac"],
+)
+def test_the_gradient_column_follows_the_root_method_either_way(method, expected):
+    """Only two root methods consume a jacobian, and a configuration has to answer that
+    the same way its name does."""
+    runner = _MultiStart(
+        solver=root, x0=[np.zeros(1)], solver_kwargs={"method": method}, progressbar=False
+    )
+
+    with patch("better_optimize.multi_optimize.build_progress_bar") as build:
+        runner._build_progress()
+
+    assert build.call_args.kwargs["use_jac"] is expected

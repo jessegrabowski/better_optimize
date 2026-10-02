@@ -2,14 +2,18 @@ from typing import get_args
 
 import pytest
 
+from better_optimize import configuration
 from better_optimize.configuration import (
     MINIMIZE_CONFIGS,
+    ROOT_CONFIGS,
     SOLVER_ARGUMENTS,
     BFGSConfig,
     config_for_method,
+    config_for_root_method,
     config_from_kwargs,
+    root_config_from_kwargs,
 )
-from better_optimize.constants import minimize_method
+from better_optimize.constants import minimize_method, root_method
 
 REGISTERED = sorted(MINIMIZE_CONFIGS)
 
@@ -120,3 +124,53 @@ def test_a_name_given_both_ways_takes_its_top_level_value():
 def test_an_unknown_method_names_the_ones_that_exist_from_kwargs():
     with pytest.raises(ValueError, match="Unknown method 'nonsense'"):
         config_from_kwargs("nonsense", {"maxiter": 5})
+
+
+ROOT_REGISTERED = sorted(ROOT_CONFIGS)
+
+
+def test_the_root_registry_covers_exactly_the_advertised_methods():
+    assert set(ROOT_CONFIGS) == set(get_args(root_method))
+
+
+@pytest.mark.parametrize("method", ROOT_REGISTERED)
+def test_a_root_method_name_may_be_written_in_any_case(method):
+    """scipy lowercases the name before dispatching, so a caller who writes "HYBR" gets
+    hybr there and should get it here."""
+    assert config_for_root_method(method.upper()).method_name == method
+    assert config_for_root_method(method.lower()).method_name == method
+
+
+def test_no_two_root_methods_differ_only_in_case():
+    """A collision would drop one configuration out of the case-insensitive lookup."""
+    assert len({method.lower() for method in ROOT_CONFIGS}) == len(ROOT_CONFIGS)
+
+
+def test_an_unknown_root_method_names_the_ones_that_exist():
+    with pytest.raises(ValueError, match="Unknown method 'nonsense'"):
+        config_for_root_method("nonsense")
+
+
+def test_root_options_reach_the_config():
+    assert config_for_root_method("hybr", xtol=1e-12).xtol == 1e-12
+
+
+@pytest.mark.parametrize("method", ROOT_REGISTERED)
+def test_a_registered_root_config_is_reachable_from_the_package(method):
+    """A configuration is what tells a caller which options a method has, so one that can
+    only be imported from its own submodule is not usable for that."""
+    name = ROOT_CONFIGS[method].__name__
+
+    assert name in configuration.__all__
+    assert getattr(configuration, name) is ROOT_CONFIGS[method]
+
+
+@pytest.mark.parametrize("method", ROOT_REGISTERED)
+def test_a_top_level_maxiter_fills_whatever_a_root_method_calls_its_budget(method):
+    """`hybr` and `df-sane` call it `maxfev`, and the caller is not told which of the ten
+    names theirs, so passing it has to work for all of them."""
+    config = root_config_from_kwargs(method, {"maxiter": 500})
+    budgets = config._budget_options()
+
+    assert budgets
+    assert [getattr(config, name) for name in budgets] == [500] * len(budgets)

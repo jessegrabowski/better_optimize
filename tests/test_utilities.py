@@ -11,10 +11,6 @@ from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
     check_f_is_fused_root,
-    determine_maxiter,
-    get_option_kwargs,
-    kwargs_to_jac_options,
-    kwargs_to_options,
     validate_provided_functions_minimize,
 )
 
@@ -99,77 +95,6 @@ def test_validate_provided_functions_warnings(caplog, settings, method: minimize
             assert any(message in log_message for log_message in caplog.messages)
 
         caplog.clear()
-
-
-@pytest.mark.parametrize("method", root_methods, ids=root_methods)
-def test_determine_maxiter(method: root_method):
-    all_maxiter_kwargs = ["maxiter", "maxfun", "maxfev"]
-    method_info = get_option_kwargs(method)
-    maxiter_kwargs = [x for x in method_info["valid_options"] if x in all_maxiter_kwargs]
-
-    optimizer_kwargs = {"options": {}}
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, n_vars=100)
-
-    # Every root method budgets 100 * (n + 1).
-    expected_maxiter = 10100
-    assert maxiter == expected_maxiter
-
-    for kwarg in maxiter_kwargs:
-        assert optimizer_kwargs["options"][kwarg] == expected_maxiter
-
-    for kwarg in all_maxiter_kwargs:
-        if kwarg not in maxiter_kwargs:
-            assert kwarg not in optimizer_kwargs["options"]
-
-
-def test_kwargs_to_options():
-    kwargs = {
-        "maxiter": 10,
-        "disp": True,
-        "line_search": "armijo",
-        "fun": lambda x: x,
-        "x0": [1, 2, 3],
-    }
-    option_kwargs = ["disp", "line_search"]
-    not_option_kwargs = ["fun", "x0"]
-
-    method: root_method = "krylov"
-    new_kwargs = kwargs_to_options(kwargs, method)
-
-    # Test that the kwargs were moved to options
-    assert all(x in new_kwargs["options"] for x in option_kwargs)
-
-    # Test that non-option kwargs were not moved to options
-    assert not any(x in new_kwargs["options"] for x in not_option_kwargs)
-    assert all(x in new_kwargs for x in not_option_kwargs)
-
-    # Test that we didn't silently modify the provided dict in place
-    assert all(x in kwargs for x in option_kwargs)
-
-
-def test_jac_kwargs_to_options():
-    kwargs = {
-        "tol_norm": None,
-        "line_search": None,
-        "max_rank": None,
-        "alpha": None,
-        "reduction_method": None,
-        "to_retain": None,
-        "disp": None,
-    }
-    jac_options = ["alpha", "reduction_method", "to_retain"]
-    not_jac_options = ["tol_norm", "line_search", "max_rank"]
-
-    method: root_method = "broyden1"
-    new_kwargs = kwargs_to_jac_options(kwargs, method)
-
-    assert "options" in new_kwargs
-    assert "jac_options" in new_kwargs["options"]
-
-    assert all(x in new_kwargs["options"]["jac_options"] for x in jac_options)
-    assert not any(x in new_kwargs["options"]["jac_options"] for x in not_jac_options)
-
-    assert all(x in new_kwargs for x in not_jac_options)
 
 
 @pytest.mark.parametrize(

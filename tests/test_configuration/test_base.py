@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -9,6 +9,7 @@ from better_optimize.configuration.base import (
     UNSET,
     MinimizeConfig,
     OptimizerConfig,
+    RootConfig,
     SolverProblem,
 )
 
@@ -221,3 +222,97 @@ def test_a_solver_problem_compares_by_identity():
     assert problem == problem
     assert problem != SolverProblem(**arguments)
     assert isinstance(hash(problem), int)
+
+
+@dataclass(frozen=True, eq=False)
+class StubRootConfig(RootConfig):
+    """Minimal concrete root subclass, so the base's own behavior can be tested directly."""
+
+    xtol: float = UNSET
+    maxfev: int | None = None
+
+    uses_jac: ClassVar[bool] = True
+
+    _tol_options: ClassVar[Mapping[str, float]] = {"xtol": 1.49012e-08}
+    _iteration_options: ClassVar[tuple[str, ...]] = ()
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+
+    @property
+    def method_name(self) -> str:
+        return "stub-root"
+
+    def default_budget(self, n: int) -> int:
+        return 200 * (n + 1)
+
+
+def test_a_root_subclass_must_say_whether_it_consumes_a_jacobian():
+    with pytest.raises(TypeError, match="must set uses_jac"):
+
+        @dataclass(frozen=True, eq=False)
+        class NoFlag(RootConfig):
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            @property
+            def method_name(self) -> str:
+                return "no-flag"
+
+
+def test_a_root_config_is_not_a_minimize_config():
+    """A root finder consumes at most a jacobian, so the two share the option machinery and
+    nothing else. Which base a configuration has is what the drivers route on."""
+    assert issubclass(StubRootConfig, OptimizerConfig)
+    assert not issubclass(StubRootConfig, MinimizeConfig)
+    assert StubRootConfig().uses_jac
+
+
+def test_a_root_config_gets_the_shared_option_machinery():
+    config = StubRootConfig()
+
+    assert config.optimizer_kwargs() == {"xtol": 1.49012e-08}
+    assert config.optimizer_kwargs(n=4)["maxfev"] == 1000
+    assert StubRootConfig(tol=1e-12).optimizer_kwargs()["xtol"] == 1e-12
+
+
+def test_an_option_where_none_is_a_value_survives_emission():
+    """The omit-unset rule would drop an explicit None, handing the caller scipy's default
+    instead of the choice they made. Listing the option resolves it from the sentinel and
+    exempts it from that rule."""
+
+    @dataclass(frozen=True, eq=False)
+    class Nullable(OptimizerConfig):
+        line_search: str | None = UNSET
+
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        _nullable_options: ClassVar[Mapping[str, Any]] = {"line_search": "armijo"}
+
+        @property
+        def method_name(self) -> str:
+            return "nullable"
+
+    assert Nullable().optimizer_kwargs() == {"line_search": "armijo"}
+    assert Nullable(line_search=None).optimizer_kwargs() == {"line_search": None}
+    assert Nullable(line_search="wolfe").optimizer_kwargs() == {"line_search": "wolfe"}
+
+
+def test_a_budget_scipy_resolves_better_is_left_out_of_the_options():
+    """scipy picks some budgets from what the call looks like, which the configuration
+    cannot see, and only consults its own rule when the option is absent."""
+
+    @dataclass(frozen=True, eq=False)
+    class Deferred(OptimizerConfig):
+        maxfev: int | None = None
+
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+        _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ("maxfev",)
+
+        @property
+        def method_name(self) -> str:
+            return "deferred"
+
+        def default_budget(self, n: int) -> int:
+            return 7 * n
+
+    assert Deferred().optimizer_kwargs(n=3) == {}
+    assert Deferred().evaluation_budget(3) == 21
+    assert Deferred(maxfev=5).optimizer_kwargs(n=3) == {"maxfev": 5}

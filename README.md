@@ -36,7 +36,8 @@ All optimization routines in `better_optimize` can display a rich, informative p
 
 - No more nested `options` dictionaries! You can pass `tol`, `maxiter`, and other common options directly as top-level keyword arguments.
 - `better_optimize` automatically sorts and promotes these arguments to the correct place for each optimizer.
-- Generalizes argument handling: always provides `tol` and `maxiter` (or their equivalents) to the optimizer, even if you forget.
+- Generalizes argument handling: always provides `tol` and `maxiter` (or their equivalents) to the optimizer, even if you forget. `root` methods disagree about whether that budget is called `maxiter`, `maxfev` or `maxfun`, and you can pass `maxiter` to any of them.
+- Seven of the ten `root` methods take part of their configuration nested inside `jac_options`, which scipy splats into the jacobian it builds. Pass it as a mapping or as the typed object for that jacobian (`BroydenJacOptions`, `KrylovJacOptions`, and so on). An option that belongs there raises if you pass it at the top level, where scipy would warn and drop it.
 
 ### 3. Argument Checking and Validation
 
