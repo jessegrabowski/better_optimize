@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from numpy.testing import assert_allclose
-from scipy.optimize import OptimizeResult
+from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize.configuration import (
     BasinHoppingConfig,
@@ -513,3 +513,29 @@ def test_the_gradient_column_follows_the_method_either_way(method, expected):
         runner._build_progress()
 
     assert build.call_args.kwargs["use_jac"] is expected
+
+
+@pytest.mark.parametrize(
+    "method, solver_kwargs",
+    [
+        (LBFGSBConfig(maxiter=50), {"jac": rosen_der}),
+        (BasinHoppingConfig(niter=2, rng=0), {"jac": rosen_der}),
+        (DifferentialEvolutionConfig(maxiter=20, rng=0), {"bounds": [(-2.0, 2.0)] * 2}),
+    ],
+    ids=["minimize", "basinhopping", "differential-evolution"],
+)
+def test_a_config_runs_through_every_start(method, solver_kwargs):
+    """``solver_kwargs`` reaches ``minimize`` untouched, so a configuration there has to
+    carry every optimizer family."""
+    result = multi_optimize(
+        solver=minimize,
+        x0=np.array([-1.2, 1.0]),
+        solver_kwargs={"f": rosen, "method": method, **solver_kwargs},
+        n_runs=3,
+        backend="sequential",
+        seed=0,
+        progressbar=False,
+    )
+
+    assert len(result.results) == 3
+    assert result.best.fun < 1e-4
