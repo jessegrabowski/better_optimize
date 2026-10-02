@@ -14,6 +14,8 @@ from scipy.optimize import root as sp_root
 from better_optimize import StopOptimization
 from better_optimize.configuration import (
     AndersonJacOptions,
+    BasinHoppingConfig,
+    BFGSConfig,
     BroydenJacOptions,
     HybrConfig,
 )
@@ -255,3 +257,13 @@ def test_a_configuration_cannot_be_combined_with_options():
             xtol=1e-10,
             progressbar=False,
         )
+
+
+@pytest.mark.parametrize(
+    "config, driver",
+    [(BFGSConfig(), "minimize"), (BasinHoppingConfig(), "the driver that runs it")],
+    ids=["minimize-config", "global-optimizer-config"],
+)
+def test_a_configuration_for_another_driver_names_that_driver(config, driver):
+    with pytest.raises(TypeError, match=f"which root does not run. Pass it to {driver}"):
+        root(partial(func, a=1, b=2), np.array([0.1]), method=config, progressbar=False)

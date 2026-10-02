@@ -9,7 +9,9 @@ from scipy.optimize import minimize as sp_minimize
 from scipy.sparse.linalg import LinearOperator
 
 from better_optimize.configuration import (
+    MinimizeConfig,
     OptimizerConfig,
+    RootConfig,
     SolverProblem,
     config_from_kwargs,
 )
@@ -107,6 +109,15 @@ def minimize(
                     solver_kwargs=solver_kwargs,
                 )
             )
+        )
+
+    # Anything still here runs through scipy's minimize, so it has to describe a method
+    # that one has, including the derivatives the validator reconciles against.
+    if not isinstance(config, MinimizeConfig):
+        driver = "root" if isinstance(config, RootConfig) else "the driver that runs it"
+        raise TypeError(
+            f"{type(config).__name__} configures {config.method_name}, which minimize does "
+            f"not run. Pass it to {driver}."
         )
 
     has_fused_f_and_grad, has_fused_f_grad_hess = check_f_is_fused_minimize(f, x0, args)

@@ -11,7 +11,13 @@ from scipy.optimize import Bounds, LinearConstraint, NonlinearConstraint, Optimi
 from scipy.sparse.linalg import LinearOperator
 
 from better_optimize import StopOptimization
-from better_optimize.configuration import MINIMIZE_CONFIGS, BFGSConfig, config_for_method
+from better_optimize.configuration import (
+    MINIMIZE_CONFIGS,
+    BasinHoppingConfig,
+    BFGSConfig,
+    HybrConfig,
+    config_for_method,
+)
 from better_optimize.constants import minimize_method
 from better_optimize.minimize import minimize
 from better_optimize.utilities import LRUCache1, ToggleableProgress
@@ -464,3 +470,23 @@ def test_a_misspelled_option_raises_instead_of_reaching_scipy():
 def test_a_config_cannot_be_combined_with_options():
     with pytest.raises(TypeError, match=r"BFGSConfig and the option\(s\) \['gtol'\]"):
         minimize(rosen, np.array([0.5, 0.5]), method=BFGSConfig(), args=(1, 0), gtol=1e-6)
+
+
+def test_a_root_configuration_names_the_driver_that_runs_it():
+    """Both bases share the option machinery, so nothing stops one reaching `minimize`
+    except the check that names where it belongs."""
+    with pytest.raises(TypeError, match="configures hybr, which minimize does not run"):
+        minimize(rosen, np.full(5, 0.5), args=(100, 0), method=HybrConfig(), progressbar=False)
+
+
+def test_a_global_optimizer_configuration_is_still_accepted():
+    """It dispatches before the check, so the check must not be reachable for one."""
+
+    def quadratic(x):
+        return float(np.sum((x - 1.0) ** 2))
+
+    result = minimize(
+        quadratic, np.zeros(3), method=BasinHoppingConfig(niter=2, rng=0), progressbar=False
+    )
+
+    assert_allclose(result.x, np.ones(3), atol=1e-6, rtol=1e-6)

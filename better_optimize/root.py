@@ -9,7 +9,12 @@ from rich.progress import Progress, TaskID
 from scipy.optimize import OptimizeResult
 from scipy.optimize import root as sp_root
 
-from better_optimize.configuration import RootConfig, root_config_from_kwargs
+from better_optimize.configuration import (
+    MinimizeConfig,
+    OptimizerConfig,
+    RootConfig,
+    root_config_from_kwargs,
+)
 from better_optimize.constants import ROOT_METHODS_WITHOUT_CALLBACK, root_method
 from better_optimize.utilities import (
     LRUCache1,
@@ -79,6 +84,13 @@ def root(
         Optimization result
 
     """
+    if isinstance(method, OptimizerConfig) and not isinstance(method, RootConfig):
+        driver = "minimize" if isinstance(method, MinimizeConfig) else "the driver that runs it"
+        raise TypeError(
+            f"{type(method).__name__} configures {method.method_name}, which root does not "
+            f"run. Pass it to {driver}."
+        )
+
     n_vars = len(x0)
     config = root_config_from_kwargs(method, optimizer_kwargs)
 
