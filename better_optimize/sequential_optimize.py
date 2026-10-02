@@ -180,10 +180,11 @@ def _settle_region(
     index: int,
     name: str,
 ) -> tuple[dict[str, Any], np.ndarray | None]:
-    """The region a stage searches.
+    """The region a stage searches, and the point it seeds from inside that region.
 
-    A stage in a chain can be given no region of its own. `_validate_stages` has already
-    refused the cases this cannot settle.
+    A solver that searches a region takes the chain's x as a seed rather than as a start,
+    and a stage in a chain can be given neither a region of its own nor a seed that falls
+    inside one. `_validate_stages` has already refused the cases this cannot settle.
     """
     bounds = stage_kwargs.get("bounds")
 
@@ -196,6 +197,18 @@ def _settle_region(
             name,
             derived_bounds_width,
         )
+
+    if bounds is not None and x is not None:
+        box = np.asarray(bounds, dtype=np.float64)
+        seed = np.clip(x, box[:, 0], box[:, 1])
+        if not np.array_equal(seed, x):
+            _log.info(
+                "sequential_optimize: stage %d (%s) was handed a point outside its own "
+                "bounds, seeding from the nearest point inside them instead",
+                index,
+                name,
+            )
+            x = seed
 
     return stage_kwargs, x
 

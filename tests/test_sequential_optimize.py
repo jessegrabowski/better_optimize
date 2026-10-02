@@ -575,3 +575,45 @@ def test_any_stage_declaring_requires_bounds_is_given_them():
     )
 
     assert received["bounds"] == [(1.5, 2.5), (-3.5, -2.5)]
+
+
+def test_a_region_stage_is_seeded_from_inside_its_own_bounds(caplog):
+    """The chain forwards the previous stage's x, which the stage's own region can exclude.
+    scipy refuses such a seed, and the region the caller named is the authority."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[
+                LBFGSBConfig(),
+                {
+                    "method": DifferentialEvolutionConfig(maxiter=20, rng=0),
+                    "bounds": [(-2.0, -1.0)] * 2,
+                    "name": "de",
+                },
+            ],
+            progressbar=False,
+        )
+
+    assert "outside its own bounds" in caplog.text
+    assert "raised" not in str(result.stage_results[1].message)
+    assert np.all((result.stage_results[1].x >= -2.0) & (result.stage_results[1].x <= -1.0))
+
+
+def test_a_region_stage_inside_its_bounds_is_seeded_unchanged(caplog):
+    """Otherwise the log line fires on every chain and stops meaning anything."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
+            rosen,
+            np.array([0.0, 0.0]),
+            stages=[
+                {
+                    "method": DifferentialEvolutionConfig(maxiter=5, rng=0),
+                    "bounds": [(-2.0, 2.0)] * 2,
+                }
+            ],
+            progressbar=False,
+        )
+
+    assert "raised" not in str(result.stage_results[0].message)
+    assert "outside its own bounds" not in caplog.text
