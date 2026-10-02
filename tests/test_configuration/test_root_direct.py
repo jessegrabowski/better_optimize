@@ -21,10 +21,18 @@ def test_only_the_minpack_methods_consume_a_jacobian(config, uses_jac):
     assert config.uses_jac is uses_jac
 
 
-def test_the_minpack_methods_budget_the_jacobian_free_path():
-    """scipy halves it when a jacobian is supplied, and documents only the halved value."""
-    assert HybrConfig().default_budget(10) == 2200
-    assert LMConfig().default_budget(10) == 2200
+@pytest.mark.parametrize("config, budget", [(HybrConfig, "maxfev"), (LMConfig, "maxiter")])
+def test_the_minpack_methods_leave_their_budget_to_scipy(config, budget):
+    """scipy halves it to ``100 * (n + 1)`` when a jacobian function is supplied, and
+    reaches that branch only when the option is absent."""
+    assert budget not in config().optimizer_kwargs(n=10)
+    assert config().default_budget(10) == 200 * 11
+    assert config().evaluation_budget(10) == 200 * 11
+
+
+@pytest.mark.parametrize("config, budget", [(HybrConfig, "maxfev"), (LMConfig, "maxiter")])
+def test_a_requested_minpack_budget_still_reaches_scipy(config, budget):
+    assert config(**{budget: 7}).optimizer_kwargs(n=10)[budget] == 7
 
 
 def test_df_sane_budgets_a_flat_count():
@@ -58,9 +66,10 @@ def test_lms_iteration_budget_caps_evaluations():
 def test_a_budget_the_caller_left_unset_is_omitted(config):
     """Every root method spells its budget differently, so the assertion has to read the
     name each one declares rather than guess at both."""
-    emitted = set(config().optimizer_kwargs())
+    budgets = set(config._budget_options())
 
-    assert set(config._budget_options()) and not set(config._budget_options()) & emitted
+    assert budgets
+    assert not budgets & set(config().optimizer_kwargs())
 
 
 def test_an_array_option_is_not_shared_between_runs():

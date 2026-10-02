@@ -55,14 +55,14 @@ class HybrConfig(RootConfig):
     _tol_options: ClassVar[Mapping[str, float]] = {"xtol": MINPACK_TOL}
     _iteration_options: ClassVar[tuple[str, ...]] = ()
     _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+    _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ("maxfev",)
 
     @property
     def method_name(self) -> str:
         return "hybr"
 
     def default_budget(self, n: int) -> int:
-        """scipy halves this to ``100 * (n + 1)`` when a jacobian function is supplied,
-        which is the only value its own documentation states."""
+        """The jacobian-free budget, which the evaluation counter caps against."""
         return 200 * (n + 1)
 
 
@@ -113,14 +113,14 @@ class LMConfig(RootConfig):
     _tol_options: ClassVar[Mapping[str, float]] = {"xtol": MINPACK_TOL}
     _iteration_options: ClassVar[tuple[str, ...]] = ()
     _evaluation_options: ClassVar[tuple[str, ...]] = ("maxiter",)
+    _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ("maxiter",)
 
     @property
     def method_name(self) -> str:
         return "lm"
 
     def default_budget(self, n: int) -> int:
-        """scipy halves this to ``100 * (n + 1)`` when a jacobian function is supplied,
-        which is the only value its own documentation states."""
+        """The jacobian-free budget, which the evaluation counter caps against."""
         return 200 * (n + 1)
 
 

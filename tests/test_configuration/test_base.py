@@ -292,3 +292,27 @@ def test_an_option_where_none_is_a_value_survives_emission():
     assert Nullable().optimizer_kwargs() == {"line_search": "armijo"}
     assert Nullable(line_search=None).optimizer_kwargs() == {"line_search": None}
     assert Nullable(line_search="wolfe").optimizer_kwargs() == {"line_search": "wolfe"}
+
+
+def test_a_budget_scipy_resolves_better_is_left_out_of_the_options():
+    """scipy picks some budgets from what the call looks like, which the configuration
+    cannot see, and only consults its own rule when the option is absent."""
+
+    @dataclass(frozen=True, eq=False)
+    class Deferred(OptimizerConfig):
+        maxfev: int | None = None
+
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+        _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ("maxfev",)
+
+        @property
+        def method_name(self) -> str:
+            return "deferred"
+
+        def default_budget(self, n: int) -> int:
+            return 7 * n
+
+    assert Deferred().optimizer_kwargs(n=3) == {}
+    assert Deferred().evaluation_budget(3) == 21
+    assert Deferred(maxfev=5).optimizer_kwargs(n=3) == {"maxfev": 5}

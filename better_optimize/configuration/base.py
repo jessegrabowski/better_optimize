@@ -111,6 +111,13 @@ class OptimizerConfig(ABC):
     _iteration_options: ClassVar[tuple[str, ...]] = ("maxiter",)
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
+    _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ()
+    """Budget options to leave out rather than fill with :meth:`default_budget`.
+
+    scipy derives a few of these from something the configuration cannot see, such as
+    whether a jacobian function was supplied, and reaches that branch only when the option
+    is absent. Sending a number of our own would make the branch unreachable."""
+
     requires_bounds: ClassVar[bool] = False
     """Whether the solver searches a region rather than starting from a point.
 
@@ -144,6 +151,7 @@ class OptimizerConfig(ABC):
             "_nullable_options",
             "_iteration_options",
             "_evaluation_options",
+            "_scipy_resolved_budgets",
         ):
             unknown = set(getattr(cls, group)) - declared
             if unknown:
@@ -229,10 +237,11 @@ class OptimizerConfig(ABC):
         Parameters
         ----------
         n : int, optional
-            Problem dimension. When given, every budget option the caller left unset is
+            Problem dimension. When given, each budget option the caller left unset is
             filled with :meth:`default_budget`, which is what makes that default
-            authoritative rather than advisory. Defaults to None, which emits only the
-            budgets the caller set and leaves scipy to apply its own.
+            authoritative rather than advisory. Options named in
+            ``_scipy_resolved_budgets`` are left out even so. Defaults to None, which emits
+            only the budgets the caller set and leaves scipy to apply its own.
         """
         # scipy writes through some array options -- Powell reorders ``direc`` in place --
         # so a config reused across runs would carry one run's state into the next.
@@ -244,7 +253,7 @@ class OptimizerConfig(ABC):
 
         if n is not None:
             for name in self._budget_options():
-                if options[name] is None:
+                if options[name] is None and name not in self._scipy_resolved_budgets:
                     options[name] = self.default_budget(n)
 
         # An option the caller never set is omitted rather than sent as None. scipy's own
