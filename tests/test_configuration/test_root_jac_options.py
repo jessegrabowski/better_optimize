@@ -82,6 +82,22 @@ def test_an_inner_option_the_solver_does_not_take_is_refused():
         KrylovJacOptions(inner_options={"restart": 5})
 
 
+@pytest.mark.parametrize(
+    "inner, field", [("maxiter", "inner_maxiter"), ("M", "inner_M"), ("outer_k", "outer_k")]
+)
+def test_an_inner_option_that_would_override_a_field_is_refused(inner, field):
+    """scipy writes ``inner_<name>`` onto the inner keyword ``<name>``, on top of what the
+    field of the same name set, so emitting both discards the field without a word."""
+    with pytest.raises(ValueError, match=rf"override the fields \['{field}'\]"):
+        KrylovJacOptions(inner_maxiter=20, inner_options={inner: 5})
+
+
+def test_an_inner_option_naming_no_field_is_still_accepted():
+    """`inner_m` is a real lgmres parameter that no field controls, and the prefix alone
+    cannot tell it apart from one that collides."""
+    assert KrylovJacOptions(inner_options={"inner_m": 4}).as_dict()["inner_inner_m"] == 4
+
+
 def test_the_accepted_inner_options_follow_the_chosen_solver():
     """`restart` belongs to gmres and not to lgmres, so the check cannot be a fixed list."""
     assert (

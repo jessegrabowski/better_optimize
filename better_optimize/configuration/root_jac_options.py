@@ -171,11 +171,21 @@ class KrylovJacOptions(JacOptions):
                 f"got {self.method!r}"
             )
 
-        unknown = set(self.inner_options or ()) - self._inner_parameters()
+        requested = set(self.inner_options or ())
+
+        unknown = requested - self._inner_parameters()
         if unknown:
             raise ValueError(
                 f"inner_options {sorted(unknown)} are not accepted by the inner solver "
                 f"{self.method!r}, which scipy would warn about and ignore"
+            )
+
+        shadowed = sorted(requested & self._field_inner_keywords())
+        if shadowed:
+            fields_shadowed = [self._field_for_inner_keyword(name) for name in shadowed]
+            raise ValueError(
+                f"inner_options {shadowed} override the fields {fields_shadowed}, which "
+                f"would discard what those are set to; set them directly instead"
             )
 
     def as_dict(self) -> dict[str, Any]:
@@ -183,6 +193,27 @@ class KrylovJacOptions(JacOptions):
         inner = emitted.pop("inner_options", {})
 
         return emitted | {f"inner_{name}": value for name, value in inner.items()}
+
+    @classmethod
+    def _field_inner_keywords(cls) -> set[str]:
+        """The inner-solver keywords a field of this class already sets.
+
+        scipy writes each ``inner_<name>`` option it is handed onto the inner keyword
+        ``<name>``, on top of what the jacobian constructor set there from its own
+        arguments. The ``inner_`` prefix is not reliable on this side: ``outer_k`` is
+        spelled without one and still lands on the inner keyword of the same name.
+        """
+        return {
+            entry.name.removeprefix("inner_")
+            for entry in fields(cls)
+            if entry.name != "inner_options"
+        }
+
+    @classmethod
+    def _field_for_inner_keyword(cls, inner_name: str) -> str:
+        declared = {entry.name for entry in fields(cls)}
+
+        return inner_name if inner_name in declared else f"inner_{inner_name}"
 
     def _inner_parameters(self) -> set[str]:
         # __post_init__ has already refused a name that is not a key here.
