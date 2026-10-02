@@ -104,7 +104,12 @@ class OptimizerConfig(ABC):
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
     requires_bounds: ClassVar[bool] = False
-    """Whether the solver searches a region rather than starting from a point."""
+    """Whether the solver searches a region rather than starting from a point.
+
+    This answers the question for a caller that has to know before building the call, such
+    as `sequential_optimize` deciding what to hand a stage. It is not where the requirement
+    is enforced: a configuration that declares it refuses the call itself, in
+    :meth:`build_solver_kwargs`."""
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

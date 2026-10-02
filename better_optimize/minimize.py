@@ -90,11 +90,6 @@ def minimize(
 
     solver = config.solver_function()
     if solver is not None:
-        if config.requires_bounds and "bounds" not in solver_kwargs:
-            raise TypeError(
-                f"{config.method_name} searches a bounded region, so bounds is required."
-            )
-
         return solver(
             **config.build_solver_kwargs(
                 SolverProblem(

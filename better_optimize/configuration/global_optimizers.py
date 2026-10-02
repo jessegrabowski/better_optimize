@@ -238,6 +238,10 @@ class DifferentialEvolutionConfig(OptimizerConfig):
         return differential_evolution
 
     def build_solver_kwargs(self, problem: SolverProblem) -> dict[str, Any]:
+        if "bounds" not in problem.solver_kwargs:
+            raise TypeError(
+                "differential_evolution searches a bounded region, so bounds is required."
+            )
         if problem.jac is not None or problem.hess is not None or problem.hessp is not None:
             raise TypeError(
                 "differential_evolution uses no derivative information, so it cannot take "

@@ -1,7 +1,6 @@
 import inspect
 
-from dataclasses import dataclass, fields
-from typing import ClassVar
+from dataclasses import fields
 
 import numpy as np
 import pytest
@@ -14,7 +13,6 @@ from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
     LBFGSBConfig,
-    OptimizerConfig,
     SolverProblem,
     TrustNCGConfig,
 )
@@ -267,24 +265,13 @@ def test_only_a_solver_searching_a_region_requires_bounds():
     assert not LBFGSBConfig().requires_bounds
 
 
-def test_any_config_declaring_requires_bounds_is_refused_without_them():
-    """`minimize` reads the flag rather than naming differential evolution, so a solver
-    added later is held to the same requirement."""
-
-    @dataclass(frozen=True, eq=False)
-    class RegionSearch(OptimizerConfig):
-        _iteration_options: ClassVar[tuple[str, ...]] = ()
-        requires_bounds: ClassVar[bool] = True
-
-        @property
-        def method_name(self) -> str:
-            return "region-search"
-
-        def solver_function(self):
-            return print
-
-        def build_solver_kwargs(self, problem):
-            return {}
-
-    with pytest.raises(TypeError, match="region-search searches a bounded region"):
-        minimize(rosen, X0, method=RegionSearch(), progressbar=False)
+@pytest.mark.parametrize(
+    "config_class",
+    [config_class for config_class, _ in CONFIGS if config_class.requires_bounds],
+    ids=[name for (config_class, _), name in zip(CONFIGS, IDS) if config_class.requires_bounds],
+)
+def test_a_config_that_requires_bounds_refuses_a_call_without_them(config_class):
+    """`requires_bounds` tells a caller it must supply a region. The configuration that
+    declares it is what enforces that, because no driver checks on its behalf."""
+    with pytest.raises(TypeError, match="searches a bounded region"):
+        config_class().build_solver_kwargs(a_problem())
