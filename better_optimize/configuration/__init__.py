@@ -1,4 +1,4 @@
-from better_optimize.configuration.base import MinimizeConfig
+from better_optimize.configuration.base import MinimizeConfig, OptimizerConfig
 from better_optimize.configuration.first_order import (
     BFGSConfig,
     CGConfig,
@@ -12,6 +12,7 @@ from better_optimize.configuration.global_optimizers import (
 from better_optimize.configuration.gradient_free import NelderMeadConfig, PowellConfig
 from better_optimize.configuration.registry import (
     MINIMIZE_CONFIGS,
+    MINIMIZE_CONFIGS_BY_LOWER_NAME,
     SOLVER_ARGUMENTS,
     config_for_method,
     config_from_kwargs,
@@ -32,6 +33,7 @@ from better_optimize.configuration.supports_constraints import (
 
 __all__ = [
     "MINIMIZE_CONFIGS",
+    "MINIMIZE_CONFIGS_BY_LOWER_NAME",
     "SOLVER_ARGUMENTS",
     "BFGSConfig",
     "BasinHoppingConfig",
@@ -41,6 +43,7 @@ __all__ = [
     "DoglegConfig",
     "LBFGSBConfig",
     "MinimizeConfig",
+    "OptimizerConfig",
     "NelderMeadConfig",
     "NewtonCGConfig",
     "PowellConfig",

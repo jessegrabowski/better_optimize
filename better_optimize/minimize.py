@@ -11,7 +11,7 @@ from scipy.sparse.linalg import LinearOperator
 from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
-    MinimizeConfig,
+    OptimizerConfig,
     config_from_kwargs,
 )
 from better_optimize.constants import minimize_method
@@ -30,7 +30,7 @@ from better_optimize.wrapper import (
 def minimize(
     f: Callable[..., float | tuple[float, np.ndarray]],
     x0: np.ndarray,
-    method: minimize_method | MinimizeConfig,
+    method: minimize_method | OptimizerConfig,
     jac: Callable[..., np.ndarray] | None = None,
     hess: Callable[..., np.ndarray | LinearOperator] | None = None,
     hessp: Callable[..., np.ndarray] | None = None,
@@ -60,7 +60,7 @@ def minimize(
         The Hessian of the objective function
     hessp: Callable, optional
         The Hessian-vector product of the objective function
-    method: str or MinimizeConfig
+    method: str or OptimizerConfig
         The optimization method to use, either by name or as a configuration carrying its
         options. A configuration cannot be combined with options passed as keywords.
     progressbar: bool
