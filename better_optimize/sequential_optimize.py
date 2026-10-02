@@ -167,6 +167,11 @@ def _stage_dict(stage: OptimizerConfig | dict[str, Any], index: int) -> dict[str
     return stage
 
 
+def _bounds_around(x: np.ndarray, width: float) -> list[tuple[float, float]]:
+    """A box of half-width `width` around each coordinate of `x`."""
+    return [(float(coordinate) - width, float(coordinate) + width) for coordinate in x]
+
+
 def _stage_label(stage: dict[str, Any], idx: int) -> str:
     if stage.get("name"):
         return str(stage["name"])
@@ -275,6 +280,7 @@ def sequential_optimize(
     progressbar: bool = True,
     verbose: bool = False,
     on_failure: FailurePolicy = "stop",
+    derived_bounds_width: float = 1.0,
 ) -> SequentialResult:
     """Run a sequence of optimizers, chaining each stage's best-so-far into the next's x0.
 
@@ -308,6 +314,9 @@ def sequential_optimize(
         Policy for hard failures (exceptions or NaN/Inf in a stage's result). ``"stop"``
         terminates the chain and returns best-so-far. ``"continue"`` proceeds to the next
         stage using best-so-far as x0. Soft failures (finite regression) always continue.
+    derived_bounds_width : float
+        Half-width of the box derived around the incoming x for a stage whose configuration
+        declares ``requires_bounds`` and that was given none. Defaults to 1.0.
 
     Returns
     -------
@@ -355,8 +364,6 @@ def sequential_optimize(
             solver = stage["solver"]
             name = stage_labels[i]
 
-            stage_kwargs = {k: v for k, v in stage.items() if k not in _DRIVER_RESERVED_KEYS}
-
             stage_x0_override = stage.get("x0", _X0_MISSING)
             if stage_x0_override is _X0_MISSING:
                 x_to_pass = current_x
@@ -364,6 +371,24 @@ def sequential_optimize(
                 x_to_pass = None
             else:
                 x_to_pass = np.asarray(stage_x0_override, dtype=np.float64)
+
+            stage_kwargs = {k: v for k, v in stage.items() if k not in _DRIVER_RESERVED_KEYS}
+
+            # A stage searching a region rather than starting from a point is handed one,
+            # because a stage in a chain has no other way to be given one.
+            method = stage.get("method")
+            if (
+                isinstance(method, OptimizerConfig)
+                and method.requires_bounds
+                and "bounds" not in stage_kwargs
+            ):
+                if x_to_pass is None:
+                    raise ValueError(
+                        f"stage {i} ({name}): {method.method_name} needs bounds, and they can "
+                        "only be derived from an x0 this stage does not receive. Give the "
+                        "stage explicit bounds with a dict stage."
+                    )
+                stage_kwargs["bounds"] = _bounds_around(x_to_pass, derived_bounds_width)
 
             obj_kwarg = _objective_kwarg_name(solver)
             call_kwargs: dict[str, Any] = {obj_kwarg: f_cached, **stage_kwargs}

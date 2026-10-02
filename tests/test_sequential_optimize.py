@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import ClassVar
+
 import numpy as np
 import pytest
 
@@ -6,8 +9,10 @@ from scipy.optimize import OptimizeResult, rosen, rosen_der
 from better_optimize import minimize, sequential_optimize
 from better_optimize.configuration import (
     BasinHoppingConfig,
+    DifferentialEvolutionConfig,
     LBFGSBConfig,
     NelderMeadConfig,
+    OptimizerConfig,
 )
 from better_optimize.sequential_optimize import SequentialResult, _classify
 from better_optimize.utilities import LRUCache1
@@ -494,3 +499,66 @@ def test_a_dict_stage_naming_a_method_needs_no_solver():
 
     assert [stage.solver_name for stage in result.stage_results] == ["nelder-mead", "L-BFGS-B"]
     assert result.best.fun < 1e-8
+
+
+def test_a_differential_evolution_stage_searches_a_box_around_the_incoming_x():
+    """It takes a region rather than a start, and a stage in a chain is given no other way
+    to name one, so the width has to reach the derived bounds."""
+    wide, narrow = (
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[DifferentialEvolutionConfig(maxiter=40, rng=0)],
+            progressbar=False,
+            derived_bounds_width=width,
+        )
+        for width in (3.0, 0.01)
+    )
+
+    assert wide.best.fun < 1e-8
+    assert narrow.best.fun > 1.0
+
+
+def test_a_differential_evolution_stage_given_no_x_says_so():
+    with pytest.raises(ValueError, match="needs bounds"):
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[{"method": DifferentialEvolutionConfig(maxiter=5), "x0": None}],
+            progressbar=False,
+        )
+
+
+def test_any_stage_declaring_requires_bounds_is_given_them():
+    """The driver reads the flag rather than naming differential evolution, so a solver
+    added later gets the same treatment."""
+    received = {}
+
+    def record_bounds(x0, bounds):
+        received["bounds"] = bounds
+        return OptimizeResult(x=np.asarray(x0), fun=0.0, success=True)
+
+    @dataclass(frozen=True, eq=False)
+    class RegionSearch(OptimizerConfig):
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        requires_bounds: ClassVar[bool] = True
+
+        @property
+        def method_name(self) -> str:
+            return "region-search"
+
+        def solver_function(self):
+            return record_bounds
+
+        def build_solver_kwargs(self, problem):
+            return {"x0": problem.x0, "bounds": problem.solver_kwargs["bounds"]}
+
+    sequential_optimize(
+        rosen,
+        np.array([2.0, -3.0]),
+        stages=[RegionSearch()],
+        progressbar=False,
+        derived_bounds_width=0.5,
+    )
+
+    assert received["bounds"] == [(1.5, 2.5), (-3.5, -2.5)]
