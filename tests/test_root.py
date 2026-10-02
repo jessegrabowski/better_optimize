@@ -1,5 +1,6 @@
 import logging
 import sys
+import warnings
 
 from functools import partial
 from typing import get_args
@@ -267,3 +268,34 @@ def test_a_configuration_cannot_be_combined_with_options():
 def test_a_configuration_for_another_driver_names_that_driver(config, driver):
     with pytest.raises(TypeError, match=f"which root does not run. Pass it to {driver}"):
         root(partial(func, a=1, b=2), np.array([0.1]), method=config, progressbar=False)
+
+
+@pytest.mark.parametrize("method", ["broyden1", "krylov", "df-sane"])
+def test_a_jacobian_the_method_cannot_use_is_withheld_from_scipy(method, caplog):
+    """scipy warns about a jacobian it was handed and will not use, repeating what this
+    package already said in plainer terms. It is still evaluated, for the readout."""
+    evaluated = {"count": 0}
+
+    def counted_jac(x):
+        evaluated["count"] += 1
+        return np.diag(np.full_like(x, 2.0))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with caplog.at_level(logging.WARNING, logger="better_optimize.utilities"):
+            res = root(
+                partial(func, a=1, b=2),
+                np.array([0.1]),
+                method=method,
+                jac=counted_jac,
+                progressbar=False,
+                verbose=True,
+            )
+
+    without_it = root(partial(func, a=1, b=2), np.array([0.1]), method=method, progressbar=False)
+
+    assert [str(w.message) for w in caught if "does not use" in str(w.message)] == []
+    assert any("not used by method" in record.message for record in caplog.records)
+    assert evaluated["count"] > 0
+    # Withholding it changes what is reported, never what is solved.
+    assert_allclose(res.x, without_it.x, atol=0, rtol=0)

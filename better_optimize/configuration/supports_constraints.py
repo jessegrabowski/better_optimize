@@ -12,7 +12,7 @@ from better_optimize.configuration.base import (
     Workers,
 )
 
-__all__ = ["COBYLAConfig", "SLSQPConfig", "TrustConstrConfig"]
+__all__ = ["COBYLAConfig", "COBYQAConfig", "SLSQPConfig", "TrustConstrConfig"]
 
 
 @dataclass(frozen=True, eq=False)
@@ -187,3 +187,63 @@ class TrustConstrConfig(MinimizeConfig):
 
     def default_budget(self, n: int) -> int:
         return 1000
+
+
+@dataclass(frozen=True, eq=False)
+class COBYQAConfig(MinimizeConfig):
+    r"""Constrained optimization by quadratic approximation, using no derivative information.
+
+    A derivative-free trust-region SQP method, which builds quadratic models of the
+    objective and of each nonlinear constraint. Bounds are unrelaxable, so the iterates
+    respect them throughout.
+
+    Parameters
+    ----------
+    disp : bool, optional
+        Print information about the optimization. Defaults to False.
+    maxfev : int, optional
+        Maximum number of objective evaluations. Defaults to None, meaning ``500 * n``.
+    maxiter : int, optional
+        Maximum number of iterations. Defaults to None, meaning ``1000 * n``.
+    f_target : float, optional
+        Stop once a feasible iterate reaches this objective value. Defaults to negative
+        infinity, which never stops early.
+    feasibility_tol : float, optional
+        Absolute tolerance on the constraint violation, below which an iterate counts as
+        feasible. Defaults to 1e-08.
+    initial_tr_radius : float, optional
+        Initial trust-region radius, which should be about a tenth of the largest expected
+        change to the variables. Defaults to 1.0.
+    final_tr_radius : float, optional
+        Final trust-region radius, which is the accuracy required of the solution. This is
+        the option `tol` fills. Defaults to 1e-06.
+    scale : bool, optional
+        Scale the variables by their bounds. Defaults to False.
+    """
+
+    disp: bool = False
+    maxfev: int | None = None
+    maxiter: int | None = None
+    f_target: float = -np.inf
+    feasibility_tol: float = 1e-08
+    initial_tr_radius: float = 1.0
+    final_tr_radius: float = UNSET
+    scale: bool = False
+
+    uses_grad: ClassVar[bool] = False
+    uses_hess: ClassVar[bool] = False
+    uses_hessp: ClassVar[bool] = False
+
+    _tol_options: ClassVar[Mapping[str, float]] = {"final_tr_radius": 1e-06}
+    _iteration_options: ClassVar[tuple[str, ...]] = ("maxiter",)
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+    # The two scale differently, at 500 * n and 1000 * n, which one default cannot express.
+    _scipy_resolved_budgets: ClassVar[tuple[str, ...]] = ("maxfev", "maxiter")
+
+    @property
+    def method_name(self) -> str:
+        return "COBYQA"
+
+    def default_budget(self, n: int) -> int:
+        """scipy's own cap on evaluations, which is what the evaluation counter needs."""
+        return 500 * n

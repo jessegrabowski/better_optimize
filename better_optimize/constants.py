@@ -9,6 +9,7 @@ minimize_method = Literal[
     "L-BFGS-B",
     "TNC",
     "COBYLA",
+    "COBYQA",
     "SLSQP",
     "trust-constr",
     "dogleg",

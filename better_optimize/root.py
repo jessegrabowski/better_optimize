@@ -101,6 +101,8 @@ def root(
 
     maxiter = config.evaluation_budget(n_vars)
 
+    solver_uses_jac = has_jac and config.uses_jac
+
     objective = ObjectiveWrapper(
         maxeval=maxiter,
         f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
@@ -111,6 +113,7 @@ def root(
         has_fused_f_and_grad=has_fused_f_and_grad,
         root=True,
         task=progress_task,
+        solver_uses_grad=solver_uses_jac,
     )
 
     if callback is not None and config.method_name in ROOT_METHODS_WITHOUT_CALLBACK:
@@ -133,7 +136,7 @@ def root(
         fun=objective,
         x0=x0,
         method=config.method_name,
-        jac=True if has_jac else None,
+        jac=True if solver_uses_jac else None,
         callback=root_callback,
         options=config.optimizer_kwargs(n=n_vars),
     )

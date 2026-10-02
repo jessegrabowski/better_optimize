@@ -8,6 +8,7 @@ from typing import Any
 try:
     from scipy.optimize import (
         _cobyla_py,
+        _cobyqa_py,
         _lbfgsb_py,
         _minimize,
         _optimize,
@@ -80,6 +81,7 @@ SCIPY_OPTIONS: dict[str, dict[str, Any]] = {
     "L-BFGS-B": option_signature(_lbfgsb_py._minimize_lbfgsb),
     "TNC": option_signature(_tnc._minimize_tnc),
     "COBYLA": option_signature(_cobyla_py._minimize_cobyla),
+    "COBYQA": option_signature(_cobyqa_py._minimize_cobyqa),
     "SLSQP": option_signature(_slsqp_py._minimize_slsqp),
     "trust-constr": option_signature(minimize_trustregion_constr._minimize_trustregion_constr),
     "dogleg": trust_region_signature(_trustregion_dogleg._minimize_dogleg),

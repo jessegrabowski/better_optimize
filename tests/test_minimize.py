@@ -1,4 +1,6 @@
+import logging
 import sys
+import warnings
 
 from functools import partial
 from typing import get_args
@@ -15,6 +17,7 @@ from better_optimize.configuration import (
     MINIMIZE_CONFIGS,
     BasinHoppingConfig,
     BFGSConfig,
+    COBYQAConfig,
     HybrConfig,
     config_for_method,
 )
@@ -490,3 +493,97 @@ def test_a_global_optimizer_configuration_is_still_accepted():
     )
 
     assert_allclose(result.x, np.ones(3), atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "method, derivative",
+    [
+        ("nelder-mead", "jac"),
+        ("powell", "jac"),
+        ("COBYLA", "jac"),
+        ("nelder-mead", "hess"),
+        ("BFGS", "hess"),
+        ("L-BFGS-B", "hess"),
+    ],
+)
+def test_a_derivative_the_method_cannot_use_is_withheld_from_scipy(method, derivative, caplog):
+    """scipy warns about a derivative it was handed and will not use, repeating what this
+    package already said in plainer terms. It is still evaluated, for the readout."""
+    evaluated = {"count": 0}
+    supplied = rosen_grad if derivative == "jac" else rosen_hess
+
+    def counted(x, a, b):
+        evaluated["count"] += 1
+        return supplied(x, a, b)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with caplog.at_level(logging.WARNING, logger="better_optimize.utilities"):
+            result = minimize(
+                rosen,
+                np.array([0.5, 0.5]),
+                args=(100, 0),
+                method=method,
+                progressbar=False,
+                verbose=True,
+                **{derivative: counted},
+            )
+
+    without_it = minimize(
+        rosen, np.array([0.5, 0.5]), args=(100, 0), method=method, progressbar=False
+    )
+
+    assert [str(w.message) for w in caught if "does not use" in str(w.message)] == []
+    assert any("not used by method" in record.message for record in caplog.records)
+    assert evaluated["count"] > 0
+    # Withholding it changes what is reported, never what is solved.
+    assert_allclose(result.x, without_it.x, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "method, derivatives",
+    [("BFGS", ("jac",)), ("trust-ncg", ("jac", "hess"))],
+    ids=["BFGS", "trust-ncg"],
+)
+def test_a_derivative_the_method_does_use_reaches_scipy_quietly(method, derivatives):
+    """The control for withholding: a legitimate pairing warns from neither source, so a
+    fix that silenced every warning would not pass here."""
+    available = {"jac": rosen_grad, "hess": rosen_hess}
+    given = {name: available[name] for name in derivatives}
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = minimize(
+            rosen, np.array([0.5, 0.5]), args=(100, 0), method=method, progressbar=False, **given
+        )
+
+    assert [str(w.message) for w in caught if "does not use" in str(w.message)] == []
+    assert_allclose(result.x, np.ones(2), atol=1e-5)
+
+
+def test_cobyqa_honors_a_constraint_from_either_call_form():
+    # The unconstrained optimum is (3, 3), so the constraint is what the test rests on.
+    constraint = NonlinearConstraint(lambda x: x[0] + x[1], -np.inf, 2.0)
+
+    def quadratic(x, a, b):
+        return float((x[0] - a) ** 2 + (x[1] - b) ** 2)
+
+    by_name = minimize(
+        quadratic,
+        np.zeros(2),
+        args=(3.0, 3.0),
+        method="COBYQA",
+        constraints=constraint,
+        progressbar=False,
+    )
+    by_config = minimize(
+        quadratic,
+        np.zeros(2),
+        args=(3.0, 3.0),
+        method=COBYQAConfig(),
+        constraints=constraint,
+        progressbar=False,
+    )
+
+    assert_allclose(by_name.x, [1.0, 1.0], atol=1e-5)
+    assert_allclose(by_config.x, by_name.x, atol=0, rtol=0)

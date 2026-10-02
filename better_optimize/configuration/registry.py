@@ -27,6 +27,7 @@ from better_optimize.configuration.second_order import (
 )
 from better_optimize.configuration.supports_constraints import (
     COBYLAConfig,
+    COBYQAConfig,
     SLSQPConfig,
     TrustConstrConfig,
 )
@@ -55,6 +56,7 @@ MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
     "L-BFGS-B": LBFGSBConfig,
     "TNC": TNCConfig,
     "COBYLA": COBYLAConfig,
+    "COBYQA": COBYQAConfig,
     "SLSQP": SLSQPConfig,
     "trust-constr": TrustConstrConfig,
     "dogleg": DoglegConfig,
@@ -100,6 +102,10 @@ def config_for_method(method: Literal["TNC"], **options: Any) -> TNCConfig: ...
 
 @overload
 def config_for_method(method: Literal["COBYLA"], **options: Any) -> COBYLAConfig: ...
+
+
+@overload
+def config_for_method(method: Literal["COBYQA"], **options: Any) -> COBYQAConfig: ...
 
 
 @overload

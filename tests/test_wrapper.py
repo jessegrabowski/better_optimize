@@ -194,3 +194,53 @@ def test_wrapper_compatible_with_sparse_outputs():
 
     value, grad = result
     assert sp.issparse(grad)
+
+
+@pytest.mark.parametrize(
+    "solver_uses_grad, solver_uses_hess, expected",
+    [(True, True, 3), (True, False, 2), (False, False, 1)],
+    ids=["grad and hess", "grad only", "neither"],
+)
+def test_the_return_shape_follows_what_the_solver_consumes(
+    solver_uses_grad, solver_uses_hess, expected
+):
+    """scipy is handed a derivative-free method's objective with ``jac=None``, so returning
+    a gradient it did not ask for would be unpacked as the objective value."""
+    objective = ObjectiveWrapper(
+        f=lambda x: float(np.sum(x**2)),
+        jac=lambda x: 2 * x,
+        hess=lambda x: 2 * np.eye(len(x)),
+        progressbar=False,
+        solver_uses_grad=solver_uses_grad,
+        solver_uses_hess=solver_uses_hess,
+    )
+    returned = objective(np.array([1.0, 2.0]))
+    parts = returned if isinstance(returned, tuple) else (returned,)
+
+    assert len(parts) == expected
+
+
+def test_a_withheld_derivative_is_still_evaluated():
+    """It is what the progress bar reports the norm of, and what this package tells the
+    caller it will keep paying for."""
+    calls = {"grad": 0, "hess": 0}
+
+    def jac(x):
+        calls["grad"] += 1
+        return 2 * x
+
+    def hess(x):
+        calls["hess"] += 1
+        return 2 * np.eye(len(x))
+
+    objective = ObjectiveWrapper(
+        f=lambda x: float(np.sum(x**2)),
+        jac=jac,
+        hess=hess,
+        progressbar=False,
+        solver_uses_grad=False,
+        solver_uses_hess=False,
+    )
+    objective(np.array([1.0, 2.0]))
+
+    assert calls == {"grad": 1, "hess": 1}

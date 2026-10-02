@@ -136,6 +136,10 @@ def minimize(
     args = () if args is None else args
     use_hess = use_hess and not isinstance(hess(x0, *args), LinearOperator)
 
+    solver_uses_grad = use_grad and config.uses_grad
+    solver_uses_hess = use_hess and config.uses_hess
+    solver_uses_hessp = use_hessp and config.uses_hessp
+
     objective = ObjectiveWrapper(
         maxeval=config.evaluation_budget(n_vars),
         f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
@@ -148,6 +152,8 @@ def minimize(
         has_fused_f_and_grad=has_fused_f_and_grad,
         root=False,
         task=progress_task,
+        solver_uses_grad=solver_uses_grad,
+        solver_uses_hess=solver_uses_hess,
     )
 
     f_optim = partial(
@@ -155,9 +161,9 @@ def minimize(
         fun=objective,
         x0=x0,
         method=config.method_name,
-        jac=True if has_fused_f_and_grad or jac is not None else None,
-        hess=None if not use_hess else lambda x: hess(x, *args),
-        hessp=None if not use_hessp else lambda x, p: hessp(x, p, *args),
+        jac=True if solver_uses_grad else None,
+        hess=None if not solver_uses_hess else lambda x: hess(x, *args),
+        hessp=None if not solver_uses_hessp else lambda x, p: hessp(x, p, *args),
         callback=_compose_callback(objective.callback, objective.callback_result, callback),
         options=config.optimizer_kwargs(n=n_vars),
         **solver_kwargs,
