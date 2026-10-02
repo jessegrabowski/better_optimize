@@ -14,7 +14,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsed
 from rich.table import Column, Table
 from scipy.optimize import OptimizeResult
 
-from better_optimize.configuration import OptimizerConfig
+from better_optimize.configuration import OptimizerConfig, config_from_kwargs
 from better_optimize.constants import CONSOLE_WIDTH
 from better_optimize.minimize import minimize
 from better_optimize.utilities import LRUCache1, ToggleableProgress, check_f_is_fused_minimize
@@ -26,6 +26,14 @@ FailurePolicy = Literal["stop", "continue"]
 _X0_MISSING = object()
 
 _DRIVER_RESERVED_KEYS = frozenset({"solver", "name", "x0"})
+
+# What `minimize` consumes by name. Everything else in a stage is an option of the method,
+# and reaches `minimize` through its variadic keyword parameter.
+_MINIMIZE_ARGUMENTS = frozenset(
+    name
+    for name, parameter in inspect.signature(minimize).parameters.items()
+    if parameter.kind is not inspect.Parameter.VAR_KEYWORD
+)
 
 
 @dataclass
@@ -289,9 +297,23 @@ def _validate_stages(
                 'suppress x0 forwarding for this stage by setting "x0": None'
             )
 
-        # Both of these are knowable before any stage runs, and a chain that has already
+        # Everything below is knowable before any stage runs, and a chain that has already
         # spent minutes optimizing should not then discover it cannot run the next stage.
         method = stage.get("method")
+
+        if solver is minimize and method is not None:
+            options = {
+                name: value
+                for name, value in stage.items()
+                if name not in _DRIVER_RESERVED_KEYS and name not in _MINIMIZE_ARGUMENTS
+            }
+            # Only TypeError and ValueError reach here, and both take one string, so the
+            # stage index can be added without losing which of the two it was.
+            try:
+                config_from_kwargs(method, options)
+            except (TypeError, ValueError) as error:
+                raise type(error)(f"stage {i}: {error}") from error
+
         if isinstance(method, OptimizerConfig) and method.requires_bounds and "bounds" not in stage:
             if derived_bounds_width is None:
                 raise ValueError(

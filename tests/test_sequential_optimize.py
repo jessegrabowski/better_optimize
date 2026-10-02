@@ -619,6 +619,18 @@ def test_a_region_stage_inside_its_bounds_is_seeded_unchanged(caplog):
     assert "outside its own bounds" not in caplog.text
 
 
+def test_a_malformed_stage_is_refused_before_the_chain_runs():
+    """A stage that sets an option on a configuration that already carries it is a mistake
+    in the call, not a solver that diverged, so it does not become a stage failure."""
+    with pytest.raises(TypeError, match=r"stage 1: Got both a LBFGSBConfig"):
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[NelderMeadConfig(), {"method": LBFGSBConfig(), "maxiter": 10}],
+            progressbar=False,
+        )
+
+
 def test_a_config_stage_is_labeled_by_its_method():
     """The label reaches `solver_name`, the progress table, and every log line about the
     stage, so a dataclass repr there is unreadable."""
