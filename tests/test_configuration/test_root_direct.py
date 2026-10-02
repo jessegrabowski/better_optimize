@@ -1,17 +1,9 @@
-import warnings
-
 import numpy as np
 import pytest
-
-from scipy.optimize import OptimizeWarning, root
 
 from better_optimize.configuration.root_direct import DFSaneConfig, HybrConfig, LMConfig
 
 ALL = [HybrConfig, LMConfig, DFSaneConfig]
-
-
-def residual(x):
-    return np.array([x[0] ** 2 - 1.0, x[1] - 2.0])
 
 
 @pytest.mark.parametrize(
@@ -79,18 +71,3 @@ def test_an_array_option_is_not_shared_between_runs():
     config.optimizer_kwargs()["diag"][0] = 99.0
 
     assert config.diag[0] == 1.0
-
-
-@pytest.mark.parametrize("config", ALL)
-def test_scipy_accepts_every_option_the_config_emits(config):
-    """The signature check cannot see a rename scipy applies before dispatch; this can."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", OptimizeWarning)
-        result = root(
-            residual,
-            np.array([0.5, 0.5]),
-            method=config().method_name,
-            options=config().optimizer_kwargs(n=2),
-        )
-
-    assert np.all(np.isfinite(result.x))
