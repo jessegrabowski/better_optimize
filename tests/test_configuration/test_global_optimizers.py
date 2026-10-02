@@ -253,10 +253,12 @@ def test_a_global_optimizer_names_the_function_that_runs_it(config_class, solver
     ids=IDS,
 )
 def test_every_argument_built_is_one_the_solver_accepts(config, problem):
-    """A misspelled key would reach the solver as an unexpected keyword at run time."""
-    parameters = set(inspect.signature(config.solver_function()).parameters)
+    """A misspelled key would reach the solver as an unexpected keyword at run time, and
+    the nested minimizer call is as able to carry one as the outer call."""
+    built = config.build_solver_kwargs(problem)
 
-    assert set(config.build_solver_kwargs(problem)) <= parameters
+    assert set(built) <= set(inspect.signature(config.solver_function()).parameters)
+    assert set(built.get("minimizer_kwargs", {})) <= set(inspect.signature(minimize).parameters)
 
 
 def test_only_a_solver_searching_a_region_requires_bounds():
