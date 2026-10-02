@@ -216,8 +216,13 @@ def _settle_region(
 def _stage_label(stage: dict[str, Any], idx: int) -> str:
     if stage.get("name"):
         return str(stage["name"])
-    if stage.get("method"):
-        return str(stage["method"])
+
+    method = stage.get("method")
+    if isinstance(method, OptimizerConfig):
+        return method.method_name
+    if method:
+        return str(method)
+
     solver = stage["solver"]
     return getattr(solver, "__name__", f"stage_{idx}")
 

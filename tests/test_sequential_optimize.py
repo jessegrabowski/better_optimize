@@ -617,3 +617,18 @@ def test_a_region_stage_inside_its_bounds_is_seeded_unchanged(caplog):
 
     assert "raised" not in str(result.stage_results[0].message)
     assert "outside its own bounds" not in caplog.text
+
+
+def test_a_config_stage_is_labeled_by_its_method():
+    """The label reaches `solver_name`, the progress table, and every log line about the
+    stage, so a dataclass repr there is unreadable."""
+    result = sequential_optimize(
+        rosen,
+        np.array([0.0, 0.0]),
+        stages=[
+            {"method": DifferentialEvolutionConfig(maxiter=5, rng=0), "bounds": [(-2.0, 2.0)] * 2}
+        ],
+        progressbar=False,
+    )
+
+    assert result.stage_results[0].solver_name == "differential_evolution"
