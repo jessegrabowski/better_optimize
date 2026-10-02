@@ -1,3 +1,5 @@
+import logging
+
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -501,31 +503,42 @@ def test_a_dict_stage_naming_a_method_needs_no_solver():
     assert result.best.fun < 1e-8
 
 
-def test_a_differential_evolution_stage_searches_a_box_around_the_incoming_x():
-    """It takes a region rather than a start, and a stage in a chain is given no other way
-    to name one, so the width has to reach the derived bounds."""
-    wide, narrow = (
+def test_a_stage_searching_a_region_is_refused_rather_than_given_a_guessed_one():
+    """A box the caller never wrote constrains the answer, so choosing one silently would
+    report a boundary-pinned result as a success."""
+    with pytest.raises(ValueError, match="searches a bounded region"):
         sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[DifferentialEvolutionConfig(maxiter=5)],
+            progressbar=False,
+        )
+
+
+def test_an_opted_in_width_reaches_the_derived_bounds(caplog):
+    """The width has to reach the solver, and the box it produced has to be recoverable
+    from the run that used it."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
             rosen,
             np.array([-1.2, 1.0]),
             stages=[DifferentialEvolutionConfig(maxiter=40, rng=0)],
             progressbar=False,
-            derived_bounds_width=width,
+            derived_bounds_width=3.0,
         )
-        for width in (3.0, 0.01)
-    )
 
-    assert wide.best.fun < 1e-8
-    assert narrow.best.fun > 1.0
+    assert result.best.fun < 1e-8
+    assert "x +/- 3 around" in caplog.text
 
 
-def test_a_differential_evolution_stage_given_no_x_says_so():
-    with pytest.raises(ValueError, match="needs bounds"):
+def test_a_stage_with_no_x_to_build_bounds_around_is_refused():
+    with pytest.raises(ValueError, match="can only build them around an x0"):
         sequential_optimize(
             rosen,
             np.array([-1.2, 1.0]),
             stages=[{"method": DifferentialEvolutionConfig(maxiter=5), "x0": None}],
             progressbar=False,
+            derived_bounds_width=1.0,
         )
 
 

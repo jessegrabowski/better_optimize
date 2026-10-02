@@ -172,6 +172,34 @@ def _bounds_around(x: np.ndarray, width: float) -> list[tuple[float, float]]:
     return [(float(coordinate) - width, float(coordinate) + width) for coordinate in x]
 
 
+def _settle_region(
+    stage_kwargs: dict[str, Any],
+    x: np.ndarray | None,
+    derived_bounds_width: float | None,
+    *,
+    index: int,
+    name: str,
+) -> tuple[dict[str, Any], np.ndarray | None]:
+    """The region a stage searches.
+
+    A stage in a chain can be given no region of its own. `_validate_stages` has already
+    refused the cases this cannot settle.
+    """
+    bounds = stage_kwargs.get("bounds")
+
+    if bounds is None and x is not None and derived_bounds_width is not None:
+        bounds = stage_kwargs["bounds"] = _bounds_around(x, derived_bounds_width)
+        _log.info(
+            "sequential_optimize: stage %d (%s) was given no bounds, searching x +/- %g "
+            "around the incoming point",
+            index,
+            name,
+            derived_bounds_width,
+        )
+
+    return stage_kwargs, x
+
+
 def _stage_label(stage: dict[str, Any], idx: int) -> str:
     if stage.get("name"):
         return str(stage["name"])
@@ -214,7 +242,9 @@ def _objective_kwarg_name(solver: Callable) -> str:
     return "f"
 
 
-def _validate_stages(stages: list[dict[str, Any]], x0: np.ndarray | None) -> None:
+def _validate_stages(
+    stages: list[dict[str, Any]], x0: np.ndarray | None, derived_bounds_width: float | None
+) -> None:
     if not stages:
         raise ValueError("stages must be a non-empty list")
     for i, stage in enumerate(stages):
@@ -240,6 +270,22 @@ def _validate_stages(stages: list[dict[str, Any]], x0: np.ndarray | None) -> Non
                 f"stage {i}: solver {solver!r} does not accept 'x0'; "
                 'suppress x0 forwarding for this stage by setting "x0": None'
             )
+
+        # Both of these are knowable before any stage runs, and a chain that has already
+        # spent minutes optimizing should not then discover it cannot run the next stage.
+        method = stage.get("method")
+        if isinstance(method, OptimizerConfig) and method.requires_bounds and "bounds" not in stage:
+            if derived_bounds_width is None:
+                raise ValueError(
+                    f"stage {i}: {method.method_name} searches a bounded region, so this "
+                    "stage needs bounds. Give them on a dict stage, or set "
+                    "derived_bounds_width to search a box around the incoming x instead."
+                )
+            if not will_receive_x0:
+                raise ValueError(
+                    f"stage {i}: {method.method_name} needs bounds, and derived_bounds_width "
+                    "can only build them around an x0 this stage does not receive."
+                )
 
 
 def _classify(res: OptimizeResult, best_fun: float | None, f_cached: LRUCache1) -> str:
@@ -280,7 +326,7 @@ def sequential_optimize(
     progressbar: bool = True,
     verbose: bool = False,
     on_failure: FailurePolicy = "stop",
-    derived_bounds_width: float = 1.0,
+    derived_bounds_width: float | None = None,
 ) -> SequentialResult:
     """Run a sequence of optimizers, chaining each stage's best-so-far into the next's x0.
 
@@ -314,9 +360,12 @@ def sequential_optimize(
         Policy for hard failures (exceptions or NaN/Inf in a stage's result). ``"stop"``
         terminates the chain and returns best-so-far. ``"continue"`` proceeds to the next
         stage using best-so-far as x0. Soft failures (finite regression) always continue.
-    derived_bounds_width : float
-        Half-width of the box derived around the incoming x for a stage whose configuration
-        declares ``requires_bounds`` and that was given none. Defaults to 1.0.
+    derived_bounds_width : float, optional
+        Search a box of this half-width around the incoming x, for a stage whose
+        configuration declares ``requires_bounds`` and that was given no ``bounds``. The
+        box is reported at INFO, because it constrains the answer and the caller never
+        wrote it. Defaults to None, which refuses such a stage rather than choosing a
+        region on the caller's behalf.
 
     Returns
     -------
@@ -325,7 +374,7 @@ def sequential_optimize(
     x0_arr = np.asarray(x0, dtype=np.float64) if x0 is not None else None
 
     resolved_stages = [_stage_dict(stage, i) for i, stage in enumerate(stages)]
-    _validate_stages(resolved_stages, x0_arr)
+    _validate_stages(resolved_stages, x0_arr, derived_bounds_width)
 
     if x0_arr is not None:
         has_grad, has_hess = check_f_is_fused_minimize(f, x0_arr, args or ())
@@ -374,21 +423,11 @@ def sequential_optimize(
 
             stage_kwargs = {k: v for k, v in stage.items() if k not in _DRIVER_RESERVED_KEYS}
 
-            # A stage searching a region rather than starting from a point is handed one,
-            # because a stage in a chain has no other way to be given one.
             method = stage.get("method")
-            if (
-                isinstance(method, OptimizerConfig)
-                and method.requires_bounds
-                and "bounds" not in stage_kwargs
-            ):
-                if x_to_pass is None:
-                    raise ValueError(
-                        f"stage {i} ({name}): {method.method_name} needs bounds, and they can "
-                        "only be derived from an x0 this stage does not receive. Give the "
-                        "stage explicit bounds with a dict stage."
-                    )
-                stage_kwargs["bounds"] = _bounds_around(x_to_pass, derived_bounds_width)
+            if isinstance(method, OptimizerConfig) and method.requires_bounds:
+                stage_kwargs, x_to_pass = _settle_region(
+                    stage_kwargs, x_to_pass, derived_bounds_width, index=i, name=name
+                )
 
             obj_kwarg = _objective_kwarg_name(solver)
             call_kwargs: dict[str, Any] = {obj_kwarg: f_cached, **stage_kwargs}
