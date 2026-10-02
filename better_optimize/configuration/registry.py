@@ -22,7 +22,13 @@ from better_optimize.configuration.supports_constraints import (
 )
 from better_optimize.constants import minimize_method
 
-__all__ = ["MINIMIZE_CONFIGS", "SOLVER_ARGUMENTS", "config_for_method", "config_from_kwargs"]
+__all__ = [
+    "MINIMIZE_CONFIGS",
+    "MINIMIZE_CONFIGS_BY_LOWER_NAME",
+    "SOLVER_ARGUMENTS",
+    "config_for_method",
+    "config_from_kwargs",
+]
 
 # Keyed by the method names better_optimize already advertises, so a caller may keep
 # passing a string.
@@ -43,9 +49,11 @@ MINIMIZE_CONFIGS: dict[str, type[MinimizeConfig]] = {
     "trust-krylov": TrustKrylovConfig,
 }
 
-# scipy lowercases the method name before dispatching, so a caller who writes "bfgs" gets
-# BFGS there and should get it here.
-_CONFIGS_BY_LOWER_NAME = {name.lower(): config for name, config in MINIMIZE_CONFIGS.items()}
+MINIMIZE_CONFIGS_BY_LOWER_NAME: dict[str, type[MinimizeConfig]] = {
+    name.lower(): config for name, config in MINIMIZE_CONFIGS.items()
+}
+"""The same configurations, keyed for a case-insensitive lookup. scipy lowercases the
+method name before dispatching, so anything resolving a name here should match it."""
 
 
 @overload
@@ -122,7 +130,7 @@ def config_for_method(method: str, **options: Any) -> MinimizeConfig:
 
 
 def _config_class(method: str) -> type[MinimizeConfig]:
-    config_class = _CONFIGS_BY_LOWER_NAME.get(method.lower())
+    config_class = MINIMIZE_CONFIGS_BY_LOWER_NAME.get(method.lower())
     if config_class is None:
         known = ", ".join(sorted(MINIMIZE_CONFIGS))
         raise ValueError(f"Unknown method {method!r}. Must be one of: {known}")

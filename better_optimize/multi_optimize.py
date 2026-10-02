@@ -20,7 +20,7 @@ from scipy.stats import qmc
 from threadpoolctl import threadpool_limits
 
 from better_optimize.configuration import (
-    MINIMIZE_CONFIGS,
+    MINIMIZE_CONFIGS_BY_LOWER_NAME,
     BasinHoppingConfig,
     MinimizeConfig,
     OptimizerConfig,
@@ -295,14 +295,16 @@ def _uses_grad(method: str | OptimizerConfig) -> bool:
 
     A basinhopping run consumes whatever the minimizer it composes does. Differential
     evolution consumes none. A name resolves to the configuration class, where the flag
-    is a `ClassVar`.
+    is a `ClassVar`, and resolves without regard to case the way :func:`minimize` does.
     """
     if isinstance(method, BasinHoppingConfig):
         return method.minimizer_config.uses_grad
     if isinstance(method, MinimizeConfig):
         return method.uses_grad
 
-    config_class = MINIMIZE_CONFIGS.get(method) if isinstance(method, str) else None
+    config_class = (
+        MINIMIZE_CONFIGS_BY_LOWER_NAME.get(method.lower()) if isinstance(method, str) else None
+    )
 
     return config_class is not None and config_class.uses_grad
 

@@ -483,6 +483,7 @@ def test_multistart_survives_crashing_solver():
     ("method", "expected"),
     [
         ("BFGS", True),
+        ("bfgs", True),
         (BFGSConfig(), True),
         ("nelder-mead", False),
         (NelderMeadConfig(), False),
@@ -492,6 +493,7 @@ def test_multistart_survives_crashing_solver():
     ],
     ids=[
         "string-grad",
+        "string-grad-lowercase",
         "config-grad",
         "string-no-grad",
         "config-no-grad",
