@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -271,3 +271,24 @@ def test_a_root_config_gets_the_shared_option_machinery():
     assert config.optimizer_kwargs() == {"xtol": 1.49012e-08}
     assert config.optimizer_kwargs(n=4)["maxfev"] == 1000
     assert StubRootConfig(tol=1e-12).optimizer_kwargs()["xtol"] == 1e-12
+
+
+def test_an_option_where_none_is_a_value_survives_emission():
+    """The omit-unset rule would drop an explicit None, handing the caller scipy's default
+    instead of the choice they made. Listing the option resolves it from the sentinel and
+    exempts it from that rule."""
+
+    @dataclass(frozen=True, eq=False)
+    class Nullable(OptimizerConfig):
+        line_search: str | None = UNSET
+
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        _nullable_options: ClassVar[Mapping[str, Any]] = {"line_search": "armijo"}
+
+        @property
+        def method_name(self) -> str:
+            return "nullable"
+
+    assert Nullable().optimizer_kwargs() == {"line_search": "armijo"}
+    assert Nullable(line_search=None).optimizer_kwargs() == {"line_search": None}
+    assert Nullable(line_search="wolfe").optimizer_kwargs() == {"line_search": "wolfe"}

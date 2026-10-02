@@ -101,6 +101,13 @@ class OptimizerConfig(ABC):
     _tol_options: ClassVar[Mapping[str, float]] = {}
     """Tolerance options that ``tol`` fills, mapped to scipy's default for each."""
 
+    _nullable_options: ClassVar[Mapping[str, Any]] = {}
+    """Options where None is a value scipy acts on, mapped to scipy's default for each.
+
+    The omit-unset rule in :meth:`optimizer_kwargs` cannot tell such a None apart from an
+    option the caller never set, so these fields default to `UNSET` and are resolved here
+    instead."""
+
     _iteration_options: ClassVar[tuple[str, ...]] = ("maxiter",)
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
@@ -131,7 +138,13 @@ class OptimizerConfig(ABC):
             `UNSET` without appearing in ``_tol_options``.
         """
         declared = cls._declared_fields()
-        for group in ("_excluded", "_tol_options", "_iteration_options", "_evaluation_options"):
+        for group in (
+            "_excluded",
+            "_tol_options",
+            "_nullable_options",
+            "_iteration_options",
+            "_evaluation_options",
+        ):
             unknown = set(getattr(cls, group)) - declared
             if unknown:
                 raise TypeError(f"{cls.__name__}.{group} names non-fields: {sorted(unknown)}")
@@ -150,16 +163,26 @@ class OptimizerConfig(ABC):
                 "and they only work as a pair"
             )
 
-        unresolved = {name for name in declared if getattr(cls, name, None) is UNSET} - set(
-            cls._tol_options
-        )
+        resolvable = set(cls._tol_options) | set(cls._nullable_options)
+        unresolved = {name for name in declared if getattr(cls, name, None) is UNSET} - resolvable
         if unresolved:
             raise TypeError(
-                f"{cls.__name__} defaults {sorted(unresolved)} to UNSET without listing "
-                f"them in _tol_options, so the sentinel would reach scipy"
+                f"{cls.__name__} defaults {sorted(unresolved)} to UNSET without listing them "
+                f"in _tol_options or _nullable_options, so the sentinel would reach scipy"
             )
 
     def __post_init__(self) -> None:
+        self._resolve_tolerances()
+
+        for name, scipy_default in self._nullable_options.items():
+            if getattr(self, name) is UNSET:
+                object.__setattr__(self, name, scipy_default)
+
+    def _resolve_tolerances(self) -> None:
+        """Fill each tolerance the caller left unset, from ``tol`` or from scipy's default.
+
+        Overridden where a method's `tol` does not mean what ``minimize``'s means.
+        """
         # A method whose own option is named ``tol`` shares this one field with the
         # convenience knob, where unset means "no tol given" rather than "fill from tol".
         requested = None if self.tol is UNSET else self.tol
@@ -227,7 +250,11 @@ class OptimizerConfig(ABC):
         # An option the caller never set is omitted rather than sent as None. scipy's own
         # default for each of these is None too, so the run is unchanged, and omitting means
         # a config never names an option the installed scipy has not heard of.
-        return {name: value for name, value in options.items() if value is not None}
+        return {
+            name: value
+            for name, value in options.items()
+            if value is not None or name in self._nullable_options
+        }
 
     def evaluation_budget(self, n: int) -> int:
         """The cap on objective evaluations, for the wrapper that counts them.
