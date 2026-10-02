@@ -17,6 +17,7 @@ from better_optimize.configuration import (
     MINIMIZE_CONFIGS,
     BasinHoppingConfig,
     BFGSConfig,
+    COBYQAConfig,
     HybrConfig,
     config_for_method,
 )
@@ -558,3 +559,31 @@ def test_a_derivative_the_method_does_use_reaches_scipy_quietly(method, derivati
 
     assert [str(w.message) for w in caught if "does not use" in str(w.message)] == []
     assert_allclose(result.x, np.ones(2), atol=1e-5)
+
+
+def test_cobyqa_honors_a_constraint_from_either_call_form():
+    # The unconstrained optimum is (3, 3), so the constraint is what the test rests on.
+    constraint = NonlinearConstraint(lambda x: x[0] + x[1], -np.inf, 2.0)
+
+    def quadratic(x, a, b):
+        return float((x[0] - a) ** 2 + (x[1] - b) ** 2)
+
+    by_name = minimize(
+        quadratic,
+        np.zeros(2),
+        args=(3.0, 3.0),
+        method="COBYQA",
+        constraints=constraint,
+        progressbar=False,
+    )
+    by_config = minimize(
+        quadratic,
+        np.zeros(2),
+        args=(3.0, 3.0),
+        method=COBYQAConfig(),
+        constraints=constraint,
+        progressbar=False,
+    )
+
+    assert_allclose(by_name.x, [1.0, 1.0], atol=1e-5)
+    assert_allclose(by_config.x, by_name.x, atol=0, rtol=0)

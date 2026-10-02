@@ -59,6 +59,7 @@ from better_optimize.configuration.second_order import (
 )
 from better_optimize.configuration.supports_constraints import (
     COBYLAConfig,
+    COBYQAConfig,
     SLSQPConfig,
     TrustConstrConfig,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "Broyden2Config",
     "BroydenJacOptions",
     "COBYLAConfig",
+    "COBYQAConfig",
     "CGConfig",
     "DFSaneConfig",
     "DiagBroydenConfig",

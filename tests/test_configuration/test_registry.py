@@ -155,6 +155,16 @@ def test_root_options_reach_the_config():
     assert config_for_root_method("hybr", xtol=1e-12).xtol == 1e-12
 
 
+@pytest.mark.parametrize("method", REGISTERED)
+def test_a_registered_config_is_reachable_from_the_package(method):
+    """A configuration is what tells a caller which options a method has, so one that can
+    only be imported from its own submodule is not usable for that."""
+    name = MINIMIZE_CONFIGS[method].__name__
+
+    assert name in configuration.__all__
+    assert getattr(configuration, name) is MINIMIZE_CONFIGS[method]
+
+
 @pytest.mark.parametrize("method", ROOT_REGISTERED)
 def test_a_registered_root_config_is_reachable_from_the_package(method):
     """A configuration is what tells a caller which options a method has, so one that can

@@ -90,11 +90,16 @@ def test_an_unset_tolerance_resolves_to_the_scipy_default(method):
 
 @pytest.mark.parametrize("method", REGISTERED)
 def test_a_dimension_fills_every_budget_the_caller_left_unset(method):
+    """Except where scipy derives the budget from something the configuration cannot see,
+    and so has to be left to do it."""
     config = MINIMIZE_CONFIGS[method]()
     options = config.optimizer_kwargs(n=10)
 
-    for name in config._budget_options():
+    for name in set(config._budget_options()) - set(config._scipy_resolved_budgets):
         assert options[name] == config.default_budget(10)
+
+    for name in config._scipy_resolved_budgets:
+        assert name not in options
 
 
 @pytest.mark.parametrize("method", REGISTERED)
