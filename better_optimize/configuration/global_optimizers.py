@@ -4,7 +4,12 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from better_optimize.configuration.base import UNSET, MinimizeConfig, OptimizerConfig
+from better_optimize.configuration.base import (
+    UNSET,
+    MinimizeConfig,
+    OptimizerConfig,
+    SolverProblem,
+)
 from better_optimize.configuration.first_order import LBFGSBConfig
 
 __all__ = ["BasinHoppingConfig", "DifferentialEvolutionConfig"]
@@ -103,9 +108,36 @@ class BasinHoppingConfig(OptimizerConfig):
         return 100
 
     def solver_function(self) -> Callable[..., Any]:
+        # basinhopping calls back into minimize, so the import cannot be at module scope.
         from better_optimize.basinhopping import basinhopping
 
         return basinhopping
+
+    def build_solver_kwargs(self, problem: SolverProblem) -> dict[str, Any]:
+        if problem.progressbar_update_interval != 1:
+            raise TypeError(
+                "basinhopping reports once per basin, so it cannot take "
+                "progressbar_update_interval."
+            )
+
+        # progress_task is not forwarded. A driver injects one unasked, and basinhopping
+        # supersedes it with the nested display it draws for its own two levels.
+        return {
+            "func": problem.f,
+            "x0": problem.x0,
+            "minimizer_kwargs": {
+                "method": self.minimizer_config,
+                "jac": problem.jac,
+                "hess": problem.hess,
+                "hessp": problem.hessp,
+                "args": problem.args,
+                **problem.solver_kwargs,
+            },
+            "callback": problem.callback,
+            "progressbar": problem.progressbar,
+            "verbose": problem.verbose,
+            **self.optimizer_kwargs(n=len(problem.x0)),
+        }
 
 
 @dataclass(frozen=True, eq=False)
@@ -177,6 +209,7 @@ class DifferentialEvolutionConfig(OptimizerConfig):
 
     _excluded: ClassVar[frozenset[str]] = frozenset()
     _tol_options: ClassVar[Mapping[str, float]] = {"tol": 0.01}
+    requires_bounds: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -200,6 +233,36 @@ class DifferentialEvolutionConfig(OptimizerConfig):
         return max(1000, 200 * n)
 
     def solver_function(self) -> Callable[..., Any]:
+        # differential_evolution imports this package, so the import cannot be at module
+        # scope.
         from better_optimize.differential_evolution import differential_evolution
 
         return differential_evolution
+
+    def build_solver_kwargs(self, problem: SolverProblem) -> dict[str, Any]:
+        if "bounds" not in problem.solver_kwargs:
+            raise TypeError(
+                "differential_evolution searches a bounded region, so bounds is required."
+            )
+        if problem.jac is not None or problem.hess is not None or problem.hessp is not None:
+            raise TypeError(
+                "differential_evolution uses no derivative information, so it cannot take "
+                "jac, hess, or hessp."
+            )
+        if problem.progressbar_update_interval != 1:
+            raise TypeError(
+                "differential_evolution reports once per generation, so it cannot take "
+                "progressbar_update_interval."
+            )
+
+        return {
+            "f": problem.f,
+            "x0": problem.x0,
+            "args": problem.args,
+            "callback": problem.callback,
+            "progressbar": problem.progressbar,
+            "progress_task": problem.progress_task,
+            "verbose": problem.verbose,
+            **problem.solver_kwargs,
+            **self.optimizer_kwargs(n=len(problem.x0)),
+        }

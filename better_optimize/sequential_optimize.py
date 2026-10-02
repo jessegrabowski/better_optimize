@@ -14,7 +14,9 @@ from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsed
 from rich.table import Column, Table
 from scipy.optimize import OptimizeResult
 
+from better_optimize.configuration import OptimizerConfig, config_from_kwargs
 from better_optimize.constants import CONSOLE_WIDTH
+from better_optimize.minimize import minimize
 from better_optimize.utilities import LRUCache1, ToggleableProgress, check_f_is_fused_minimize
 
 _log = logging.getLogger(__name__)
@@ -24,6 +26,14 @@ FailurePolicy = Literal["stop", "continue"]
 _X0_MISSING = object()
 
 _DRIVER_RESERVED_KEYS = frozenset({"solver", "name", "x0"})
+
+# What `minimize` consumes by name. Everything else in a stage is an option of the method,
+# and reaches `minimize` through its variadic keyword parameter.
+_MINIMIZE_ARGUMENTS = frozenset(
+    name
+    for name, parameter in inspect.signature(minimize).parameters.items()
+    if parameter.kind is not inspect.Parameter.VAR_KEYWORD
+)
 
 
 @dataclass
@@ -139,11 +149,88 @@ def _build_sequential_progress(progressbar: bool) -> ToggleableProgress:
     )
 
 
+def _stage_dict(stage: OptimizerConfig | dict[str, Any], index: int) -> dict[str, Any]:
+    """The stage as the driver runs it.
+
+    A configuration becomes a :func:`minimize` call, because `minimize` already dispatches
+    every configuration to the solver that runs it. So does a dict naming a method without
+    naming a solver.
+
+    Raises
+    ------
+    TypeError
+        If `stage` is neither a configuration nor a dict.
+    """
+    if isinstance(stage, OptimizerConfig):
+        return {"solver": minimize, "method": stage, "name": stage.method_name}
+
+    if not isinstance(stage, dict):
+        raise TypeError(
+            f"stage {index}: expected a configuration or a dict, got {type(stage).__name__}"
+        )
+
+    if "solver" not in stage and "method" in stage:
+        return {"solver": minimize, **stage}
+
+    return stage
+
+
+def _bounds_around(x: np.ndarray, width: float) -> list[tuple[float, float]]:
+    """A box of half-width `width` around each coordinate of `x`."""
+    return [(float(coordinate) - width, float(coordinate) + width) for coordinate in x]
+
+
+def _settle_region(
+    stage_kwargs: dict[str, Any],
+    x: np.ndarray | None,
+    derived_bounds_width: float | None,
+    *,
+    index: int,
+    name: str,
+) -> tuple[dict[str, Any], np.ndarray | None]:
+    """The region a stage searches, and the point it seeds from inside that region.
+
+    A solver that searches a region takes the chain's x as a seed rather than as a start,
+    and a stage in a chain can be given neither a region of its own nor a seed that falls
+    inside one. `_validate_stages` has already refused the cases this cannot settle.
+    """
+    bounds = stage_kwargs.get("bounds")
+
+    if bounds is None and x is not None and derived_bounds_width is not None:
+        bounds = stage_kwargs["bounds"] = _bounds_around(x, derived_bounds_width)
+        _log.info(
+            "sequential_optimize: stage %d (%s) was given no bounds, searching x +/- %g "
+            "around the incoming point",
+            index,
+            name,
+            derived_bounds_width,
+        )
+
+    if bounds is not None and x is not None:
+        box = np.asarray(bounds, dtype=np.float64)
+        seed = np.clip(x, box[:, 0], box[:, 1])
+        if not np.array_equal(seed, x):
+            _log.info(
+                "sequential_optimize: stage %d (%s) was handed a point outside its own "
+                "bounds, seeding from the nearest point inside them instead",
+                index,
+                name,
+            )
+            x = seed
+
+    return stage_kwargs, x
+
+
 def _stage_label(stage: dict[str, Any], idx: int) -> str:
     if stage.get("name"):
         return str(stage["name"])
-    if stage.get("method"):
-        return str(stage["method"])
+
+    method = stage.get("method")
+    if isinstance(method, OptimizerConfig):
+        return method.method_name
+    if method:
+        return str(method)
+
     solver = stage["solver"]
     return getattr(solver, "__name__", f"stage_{idx}")
 
@@ -181,12 +268,12 @@ def _objective_kwarg_name(solver: Callable) -> str:
     return "f"
 
 
-def _validate_stages(stages: list[dict[str, Any]], x0: np.ndarray | None) -> None:
+def _validate_stages(
+    stages: list[dict[str, Any]], x0: np.ndarray | None, derived_bounds_width: float | None
+) -> None:
     if not stages:
         raise ValueError("stages must be a non-empty list")
     for i, stage in enumerate(stages):
-        if not isinstance(stage, dict):
-            raise TypeError(f"stage {i}: expected dict, got {type(stage).__name__}")
         solver = stage.get("solver")
         if solver is None:
             raise ValueError(f"stage {i}: missing required 'solver' key")
@@ -209,6 +296,36 @@ def _validate_stages(stages: list[dict[str, Any]], x0: np.ndarray | None) -> Non
                 f"stage {i}: solver {solver!r} does not accept 'x0'; "
                 'suppress x0 forwarding for this stage by setting "x0": None'
             )
+
+        # Everything below is knowable before any stage runs, and a chain that has already
+        # spent minutes optimizing should not then discover it cannot run the next stage.
+        method = stage.get("method")
+
+        if solver is minimize and method is not None:
+            options = {
+                name: value
+                for name, value in stage.items()
+                if name not in _DRIVER_RESERVED_KEYS and name not in _MINIMIZE_ARGUMENTS
+            }
+            # Only TypeError and ValueError reach here, and both take one string, so the
+            # stage index can be added without losing which of the two it was.
+            try:
+                config_from_kwargs(method, options)
+            except (TypeError, ValueError) as error:
+                raise type(error)(f"stage {i}: {error}") from error
+
+        if isinstance(method, OptimizerConfig) and method.requires_bounds and "bounds" not in stage:
+            if derived_bounds_width is None:
+                raise ValueError(
+                    f"stage {i}: {method.method_name} searches a bounded region, so this "
+                    "stage needs bounds. Give them on a dict stage, or set "
+                    "derived_bounds_width to search a box around the incoming x instead."
+                )
+            if not will_receive_x0:
+                raise ValueError(
+                    f"stage {i}: {method.method_name} needs bounds, and derived_bounds_width "
+                    "can only build them around an x0 this stage does not receive."
+                )
 
 
 def _classify(res: OptimizeResult, best_fun: float | None, f_cached: LRUCache1) -> str:
@@ -244,18 +361,20 @@ def _classify(res: OptimizeResult, best_fun: float | None, f_cached: LRUCache1) 
 def sequential_optimize(
     f: Callable,
     x0: Sequence[float] | np.ndarray | None,
-    stages: list[dict[str, Any]],
+    stages: list[OptimizerConfig | dict[str, Any]],
     args: tuple = (),
     progressbar: bool = True,
     verbose: bool = False,
     on_failure: FailurePolicy = "stop",
+    derived_bounds_width: float | None = None,
 ) -> SequentialResult:
     """Run a sequence of optimizers, chaining each stage's best-so-far into the next's x0.
 
-    Each stage is a dict containing a ``"solver"`` key (callable) plus any kwargs the solver
-    accepts. Stage output x is forwarded to the next stage's ``x0`` unless the stage dict
-    explicitly sets ``"x0"``. Set ``"x0": None`` to suppress forwarding. An ``LRUCache1``
-    wraps ``f`` at the driver level so cross-stage cache hits fire at stage handoffs.
+    A stage is a configuration object, or a dict containing a ``"solver"`` key (callable)
+    plus any kwargs the solver accepts. Stage output x is forwarded to the next stage's
+    ``x0`` unless the stage dict explicitly sets ``"x0"``. Set ``"x0": None`` to suppress
+    forwarding. An ``LRUCache1`` wraps ``f`` at the driver level so cross-stage cache hits
+    fire at stage handoffs.
 
     Parameters
     ----------
@@ -263,10 +382,13 @@ def sequential_optimize(
         Objective function. May return a scalar, ``(f, grad)``, or ``(f, grad, hess)``.
     x0 : array-like or None
         Initial guess for the first stage (unless the stage overrides via its own ``"x0"``).
-    stages : list of dict
-        Each dict must contain ``"solver": Callable`` and may include ``"name": str`` plus
-        any kwargs the solver accepts (e.g. ``"method"``, ``"bounds"``, or a per-stage
-        ``"callback"`` forwarded to that stage's solver when it accepts one).
+    stages : list of OptimizerConfig or dict
+        A configuration runs through :func:`minimize`, which dispatches it to the solver it
+        selects, and is labeled by its ``method_name``. A dict must contain
+        ``"solver": Callable`` and may include ``"name": str`` plus any kwargs the solver
+        accepts (e.g. ``"method"``, ``"bounds"``, or a per-stage ``"callback"`` forwarded to
+        that stage's solver when it accepts one). Use a dict for a stage needing ``bounds``,
+        ``constraints``, or its own ``x0``, since a configuration carries none of those.
     args : tuple
         Extra positional args forwarded identically to every stage's objective call.
     progressbar : bool
@@ -278,6 +400,12 @@ def sequential_optimize(
         Policy for hard failures (exceptions or NaN/Inf in a stage's result). ``"stop"``
         terminates the chain and returns best-so-far. ``"continue"`` proceeds to the next
         stage using best-so-far as x0. Soft failures (finite regression) always continue.
+    derived_bounds_width : float, optional
+        Search a box of this half-width around the incoming x, for a stage whose
+        configuration declares ``requires_bounds`` and that was given no ``bounds``. The
+        box is reported at INFO, because it constrains the answer and the caller never
+        wrote it. Defaults to None, which refuses such a stage rather than choosing a
+        region on the caller's behalf.
 
     Returns
     -------
@@ -285,7 +413,8 @@ def sequential_optimize(
     """
     x0_arr = np.asarray(x0, dtype=np.float64) if x0 is not None else None
 
-    _validate_stages(stages, x0_arr)
+    resolved_stages = [_stage_dict(stage, i) for i, stage in enumerate(stages)]
+    _validate_stages(resolved_stages, x0_arr, derived_bounds_width)
 
     if x0_arr is not None:
         has_grad, has_hess = check_f_is_fused_minimize(f, x0_arr, args or ())
@@ -300,7 +429,7 @@ def sequential_optimize(
     )
 
     progress = _build_sequential_progress(progressbar)
-    stage_labels = _uniquify_labels([_stage_label(s, i) for i, s in enumerate(stages)])
+    stage_labels = _uniquify_labels([_stage_label(s, i) for i, s in enumerate(resolved_stages)])
     stage_tasks = [
         progress.add_task(
             description=stage_labels[i],
@@ -309,7 +438,7 @@ def sequential_optimize(
             grad_norm=0.0,
             hess_norm=0.0,
         )
-        for i in range(len(stages))
+        for i in range(len(resolved_stages))
     ]
 
     stage_results: list[OptimizeResult] = []
@@ -320,10 +449,9 @@ def sequential_optimize(
     hard_failure_seen = False
 
     with progress:
-        for i, stage in enumerate(stages):
+        for i, stage in enumerate(resolved_stages):
             solver = stage["solver"]
-            name = stage.get("name") or getattr(solver, "__name__", f"stage_{i}")
-            stage_kwargs = {k: v for k, v in stage.items() if k not in _DRIVER_RESERVED_KEYS}
+            name = stage_labels[i]
 
             stage_x0_override = stage.get("x0", _X0_MISSING)
             if stage_x0_override is _X0_MISSING:
@@ -332,6 +460,14 @@ def sequential_optimize(
                 x_to_pass = None
             else:
                 x_to_pass = np.asarray(stage_x0_override, dtype=np.float64)
+
+            stage_kwargs = {k: v for k, v in stage.items() if k not in _DRIVER_RESERVED_KEYS}
+
+            method = stage.get("method")
+            if isinstance(method, OptimizerConfig) and method.requires_bounds:
+                stage_kwargs, x_to_pass = _settle_region(
+                    stage_kwargs, x_to_pass, derived_bounds_width, index=i, name=name
+                )
 
             obj_kwarg = _objective_kwarg_name(solver)
             call_kwargs: dict[str, Any] = {obj_kwarg: f_cached, **stage_kwargs}

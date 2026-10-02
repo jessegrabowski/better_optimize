@@ -1,14 +1,22 @@
+import logging
+
+from dataclasses import dataclass
+from typing import ClassVar
+
 import numpy as np
 import pytest
 
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import minimize, sequential_optimize
-from better_optimize.sequential_optimize import (
-    SequentialResult,
-    _classify,
-    _validate_stages,
+from better_optimize.configuration import (
+    BasinHoppingConfig,
+    DifferentialEvolutionConfig,
+    LBFGSBConfig,
+    NelderMeadConfig,
+    OptimizerConfig,
 )
+from better_optimize.sequential_optimize import SequentialResult, _classify
 from better_optimize.utilities import LRUCache1
 
 
@@ -408,9 +416,11 @@ def test_classify_helper_direct():
     assert _classify(res_regress, best_fun=1.0, f_cached=f_cached) == "soft"
 
 
-def test_validate_stages_rejects_non_dict():
-    with pytest.raises(TypeError, match="expected dict"):
-        _validate_stages([("not", "a", "dict")], x0=None)
+def test_a_stage_that_is_neither_a_config_nor_a_dict_is_rejected():
+    with pytest.raises(TypeError, match="stage 0: expected a configuration or a dict"):
+        sequential_optimize(
+            rosen, np.array([1.0, 1.0]), stages=[("not", "a", "dict")], progressbar=False
+        )
 
 
 def test_result_is_sequential_result_with_properties():
@@ -442,3 +452,195 @@ def test_to_dataframe_shape():
         df.columns
     )
     assert df["best_stage"].sum() == 1
+
+
+def test_a_config_stage_runs_without_naming_a_solver():
+    """A configuration already says which solver runs it, so the stage needs no callable."""
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[NelderMeadConfig(maxiter=300), LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["nelder-mead", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_a_global_optimizer_config_is_a_stage_like_any_other():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[BasinHoppingConfig(niter=2, rng=0), LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["basinhopping", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_config_and_dict_stages_mix_in_one_chain():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[{"solver": minimize, "method": "nelder-mead", "name": "coarse"}, LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["coarse", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_a_dict_stage_naming_a_method_needs_no_solver():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[{"method": "nelder-mead", "maxiter": 300}, {"method": "L-BFGS-B"}],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["nelder-mead", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_a_stage_searching_a_region_is_refused_rather_than_given_a_guessed_one():
+    """A box the caller never wrote constrains the answer, so choosing one silently would
+    report a boundary-pinned result as a success."""
+    with pytest.raises(ValueError, match="searches a bounded region"):
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[DifferentialEvolutionConfig(maxiter=5)],
+            progressbar=False,
+        )
+
+
+def test_an_opted_in_width_reaches_the_derived_bounds(caplog):
+    """The width has to reach the solver, and the box it produced has to be recoverable
+    from the run that used it."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[DifferentialEvolutionConfig(maxiter=40, rng=0)],
+            progressbar=False,
+            derived_bounds_width=3.0,
+        )
+
+    assert result.best.fun < 1e-8
+    assert "x +/- 3 around" in caplog.text
+
+
+def test_a_stage_with_no_x_to_build_bounds_around_is_refused():
+    with pytest.raises(ValueError, match="can only build them around an x0"):
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[{"method": DifferentialEvolutionConfig(maxiter=5), "x0": None}],
+            progressbar=False,
+            derived_bounds_width=1.0,
+        )
+
+
+def test_any_stage_declaring_requires_bounds_is_given_them():
+    """The driver reads the flag rather than naming differential evolution, so a solver
+    added later gets the same treatment."""
+    received = {}
+
+    def record_bounds(x0, bounds):
+        received["bounds"] = bounds
+        return OptimizeResult(x=np.asarray(x0), fun=0.0, success=True)
+
+    @dataclass(frozen=True, eq=False)
+    class RegionSearch(OptimizerConfig):
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        requires_bounds: ClassVar[bool] = True
+
+        @property
+        def method_name(self) -> str:
+            return "region-search"
+
+        def solver_function(self):
+            return record_bounds
+
+        def build_solver_kwargs(self, problem):
+            return {"x0": problem.x0, "bounds": problem.solver_kwargs["bounds"]}
+
+    sequential_optimize(
+        rosen,
+        np.array([2.0, -3.0]),
+        stages=[RegionSearch()],
+        progressbar=False,
+        derived_bounds_width=0.5,
+    )
+
+    assert received["bounds"] == [(1.5, 2.5), (-3.5, -2.5)]
+
+
+def test_a_region_stage_is_seeded_from_inside_its_own_bounds(caplog):
+    """The chain forwards the previous stage's x, which the stage's own region can exclude.
+    scipy refuses such a seed, and the region the caller named is the authority."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[
+                LBFGSBConfig(),
+                {
+                    "method": DifferentialEvolutionConfig(maxiter=20, rng=0),
+                    "bounds": [(-2.0, -1.0)] * 2,
+                    "name": "de",
+                },
+            ],
+            progressbar=False,
+        )
+
+    assert "outside its own bounds" in caplog.text
+    assert "raised" not in str(result.stage_results[1].message)
+    assert np.all((result.stage_results[1].x >= -2.0) & (result.stage_results[1].x <= -1.0))
+
+
+def test_a_region_stage_inside_its_bounds_is_seeded_unchanged(caplog):
+    """Otherwise the log line fires on every chain and stops meaning anything."""
+    with caplog.at_level(logging.INFO, logger="better_optimize.sequential_optimize"):
+        result = sequential_optimize(
+            rosen,
+            np.array([0.0, 0.0]),
+            stages=[
+                {
+                    "method": DifferentialEvolutionConfig(maxiter=5, rng=0),
+                    "bounds": [(-2.0, 2.0)] * 2,
+                }
+            ],
+            progressbar=False,
+        )
+
+    assert "raised" not in str(result.stage_results[0].message)
+    assert "outside its own bounds" not in caplog.text
+
+
+def test_a_malformed_stage_is_refused_before_the_chain_runs():
+    """A stage that sets an option on a configuration that already carries it is a mistake
+    in the call, not a solver that diverged, so it does not become a stage failure."""
+    with pytest.raises(TypeError, match=r"stage 1: Got both a LBFGSBConfig"):
+        sequential_optimize(
+            rosen,
+            np.array([-1.2, 1.0]),
+            stages=[NelderMeadConfig(), {"method": LBFGSBConfig(), "maxiter": 10}],
+            progressbar=False,
+        )
+
+
+def test_a_config_stage_is_labeled_by_its_method():
+    """The label reaches `solver_name`, the progress table, and every log line about the
+    stage, so a dataclass repr there is unreadable."""
+    result = sequential_optimize(
+        rosen,
+        np.array([0.0, 0.0]),
+        stages=[
+            {"method": DifferentialEvolutionConfig(maxiter=5, rng=0), "bounds": [(-2.0, 2.0)] * 2}
+        ],
+        progressbar=False,
+    )
+
+    assert result.stage_results[0].solver_name == "differential_evolution"

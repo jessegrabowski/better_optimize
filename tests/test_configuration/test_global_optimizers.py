@@ -13,6 +13,7 @@ from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
     LBFGSBConfig,
+    SolverProblem,
     TrustNCGConfig,
 )
 
@@ -216,3 +217,63 @@ def test_differential_evolution_rejects_an_update_interval():
             progressbar=False,
             progressbar_update_interval=5,
         )
+
+
+def a_problem(**overrides):
+    """What `minimize` hands a configuration that shapes its own call."""
+    defaults = dict(
+        f=rosen,
+        x0=X0,
+        jac=None,
+        hess=None,
+        hessp=None,
+        args=(),
+        callback=None,
+        progressbar=False,
+        progress_task=None,
+        progressbar_update_interval=1,
+        verbose=False,
+        solver_kwargs={},
+    )
+
+    return SolverProblem(**{**defaults, **overrides})
+
+
+@pytest.mark.parametrize("config_class, solver", CONFIGS, ids=IDS)
+def test_a_global_optimizer_names_the_function_that_runs_it(config_class, solver):
+    assert config_class().solver_function() is solver
+
+
+@pytest.mark.parametrize(
+    "config, problem",
+    [
+        (BasinHoppingConfig(), a_problem()),
+        (DifferentialEvolutionConfig(), a_problem(solver_kwargs={"bounds": BOUNDS})),
+    ],
+    ids=IDS,
+)
+def test_every_argument_built_is_one_the_solver_accepts(config, problem):
+    """A misspelled key would reach the solver as an unexpected keyword at run time, and
+    the nested minimizer call is as able to carry one as the outer call."""
+    built = config.build_solver_kwargs(problem)
+
+    assert set(built) <= set(inspect.signature(config.solver_function()).parameters)
+    assert set(built.get("minimizer_kwargs", {})) <= set(inspect.signature(minimize).parameters)
+
+
+def test_only_a_solver_searching_a_region_requires_bounds():
+    assert DifferentialEvolutionConfig().requires_bounds
+    assert not BasinHoppingConfig().requires_bounds
+    assert not LBFGSBConfig().requires_bounds
+
+
+@pytest.mark.parametrize(
+    "config_class",
+    [config_class for config_class, _ in CONFIGS if config_class.requires_bounds],
+    ids=[name for (config_class, _), name in zip(CONFIGS, IDS) if config_class.requires_bounds],
+)
+def test_a_config_that_requires_bounds_refuses_a_call_without_them(config_class):
+    """`requires_bounds` tells a caller it must supply a region. The configuration that
+    declares it is what enforces that, because no driver checks on its behalf."""
+    with pytest.raises(TypeError, match="searches a bounded region"):
+        config_class().build_solver_kwargs(a_problem())

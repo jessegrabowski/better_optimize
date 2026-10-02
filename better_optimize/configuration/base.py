@@ -5,11 +5,14 @@ from typing import Any, ClassVar, get_origin
 
 import numpy as np
 
+from rich.progress import Progress, TaskID
+
 __all__ = [
     "UNSET",
     "FiniteDiffStep",
     "MinimizeConfig",
     "OptimizerConfig",
+    "SolverProblem",
     "SQRT_EPS",
     "Workers",
 ]
@@ -28,6 +31,30 @@ class _Unset:
 
 
 UNSET: Any = _Unset()
+
+
+@dataclass(frozen=True, eq=False)
+class SolverProblem:
+    """What :func:`minimize` was handed, for a configuration that shapes it into the call
+    another entry point expects.
+
+    It carries the problem and the reporting settings rather than any option of the method,
+    so a configuration reads it without storing any of it.
+    """
+
+    f: Callable[..., Any]
+    x0: np.ndarray
+    jac: Callable[..., Any] | None
+    hess: Callable[..., Any] | None
+    hessp: Callable[..., Any] | None
+    args: tuple[Any, ...]
+    callback: Callable[..., Any] | None
+    progressbar: bool | Progress
+    progress_task: TaskID | None
+    progressbar_update_interval: int
+    verbose: bool
+    solver_kwargs: dict[str, Any]
+    """The arguments describing the problem rather than the method, such as ``bounds``."""
 
 
 @dataclass(frozen=True, eq=False)
@@ -76,6 +103,14 @@ class OptimizerConfig(ABC):
     _iteration_options: ClassVar[tuple[str, ...]] = ("maxiter",)
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
+    requires_bounds: ClassVar[bool] = False
+    """Whether the solver searches a region rather than starting from a point.
+
+    This answers the question for a caller that has to know before building the call, such
+    as `sequential_optimize` deciding what to hand a stage. It is not where the requirement
+    is enforced: a configuration that declares it refuses the call itself, in
+    :meth:`build_solver_kwargs`."""
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
@@ -100,6 +135,20 @@ class OptimizerConfig(ABC):
             if unknown:
                 raise TypeError(f"{cls.__name__}.{group} names non-fields: {sorted(unknown)}")
 
+        # Naming a solver without shaping its call, or the reverse, leaves a config that
+        # dispatches to nothing or builds a call nobody makes.
+        overrides = {
+            name
+            for name in ("solver_function", "build_solver_kwargs")
+            if getattr(cls, name) is not getattr(OptimizerConfig, name)
+        }
+        if len(overrides) == 1:
+            missing = {"solver_function", "build_solver_kwargs"} - overrides
+            raise TypeError(
+                f"{cls.__name__} overrides {overrides.pop()} without {missing.pop()}, "
+                "and they only work as a pair"
+            )
+
         unresolved = {name for name in declared if getattr(cls, name, None) is UNSET} - set(
             cls._tol_options
         )
@@ -123,6 +172,28 @@ class OptimizerConfig(ABC):
     @abstractmethod
     def method_name(self) -> str:
         """The string scipy knows this method by."""
+
+    def solver_function(self) -> Callable[..., Any] | None:
+        """The entry point that runs this configuration.
+
+        Defaults to None, meaning :func:`minimize` runs it rather than handing it on. A
+        configuration that overrides this owns its own call shape in
+        :meth:`build_solver_kwargs`, so `minimize` never branches on which one it has.
+        """
+        return None
+
+    def build_solver_kwargs(self, problem: SolverProblem) -> dict[str, Any]:
+        """Keyword arguments for :meth:`solver_function`, shaped from `problem`.
+
+        Raises
+        ------
+        TypeError
+            If `problem` carries something this solver cannot honor.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} names no solver function, so minimize runs it directly "
+            "and there is no call to build"
+        )
 
     def default_budget(self, n: int) -> int:
         """The budget `better_optimize` applies to an `n`-dimensional problem by default."""
