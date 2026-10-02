@@ -1,7 +1,6 @@
 import logging
 
 from collections.abc import Callable, Iterable
-from copy import deepcopy
 
 import numpy as np
 
@@ -9,11 +8,7 @@ from rich.box import SIMPLE_HEAD
 from rich.progress import Progress, Task
 from rich.table import Column, Table
 
-from better_optimize.configuration.base import MinimizeConfig
-from better_optimize.constants import (
-    ROOT_MODE_KWARGS,
-    root_method,
-)
+from better_optimize.configuration.base import MinimizeConfig, RootConfig
 
 _log = logging.getLogger(__name__)
 
@@ -147,13 +142,6 @@ class ToggleableProgress(Progress):
         return table
 
 
-def get_option_kwargs(method: root_method) -> dict:
-    if method not in ROOT_MODE_KWARGS:
-        raise ValueError(f"Unknown method: {method}")
-
-    return ROOT_MODE_KWARGS[method]
-
-
 def validate_provided_functions_minimize(
     config: MinimizeConfig,
     f_grad: Callable[[np.ndarray], np.ndarray] | None,
@@ -223,11 +211,10 @@ def validate_provided_functions_minimize(
 
 
 def validate_provided_functions_root(
-    method: root_method, f, jac, has_fused_f_and_grad: bool, verbose: bool = True
+    config: RootConfig, jac, has_fused_f_and_grad: bool, verbose: bool = True
 ) -> bool:
     has_jac = jac is not None
-    info_dict = get_option_kwargs(method)
-    uses_jac = info_dict["uses_jac"]
+    uses_jac = config.uses_jac
 
     if has_fused_f_and_grad and has_jac and verbose:
         _log.warning(
@@ -240,9 +227,9 @@ def validate_provided_functions_root(
 
     if has_jac and not uses_jac and verbose:
         _log.warning(
-            f"Gradient provided but not used by method {method}. Gradients will still be evaluated at each "
-            f"optimzer step and the norm will be reported as a diagnositc. For large problems, this may be "
-            f"computationally intensive."
+            f"Gradient provided but not used by method {config.method_name}. Gradients will still be "
+            f"evaluated at each optimizer step and the norm will be reported as a diagnostic. For large "
+            f"problems, this may be computationally intensive."
         )
 
     return has_jac
@@ -326,68 +313,6 @@ def check_f_is_fused_root(f, x0, args) -> bool:
             )
 
     return ret_val
-
-
-def determine_maxiter(optimizer_kwargs: dict, method: root_method, n_vars) -> tuple[int, dict]:
-    MAXITER_KWARGS = ["maxiter", "maxfun", "maxfev"]
-    method_info = get_option_kwargs(method)
-    maxiter_kwargs = [x for x in method_info["valid_options"] if x in MAXITER_KWARGS]
-    maxiter_possibilities = [
-        optimizer_kwargs.pop("maxiter", None),
-        *(optimizer_kwargs["options"].get(kwarg) for kwarg in maxiter_kwargs),
-    ]
-    if any(maxiter_possibilities):
-        maxiter = max([x for x in maxiter_possibilities if x is not None])
-    else:
-        maxiter = method_info["f_maxiter_default"](n_vars)
-
-    for kwarg in maxiter_kwargs:
-        if kwarg not in optimizer_kwargs["options"]:
-            optimizer_kwargs["options"][kwarg] = maxiter
-
-    return maxiter, optimizer_kwargs
-
-
-def kwargs_to_options(optimizer_kwargs: dict, method: root_method) -> dict:
-    optimizer_kwargs = deepcopy(optimizer_kwargs)
-
-    NEVER_AUTO_PROMOTE = ["bounds", "tol", "jac_options"]
-    option_kwargs = get_option_kwargs(method)["valid_options"]
-
-    provided_kwargs = list(optimizer_kwargs.keys())
-    options = optimizer_kwargs.get("options", {})
-
-    for kwarg in option_kwargs:
-        if kwarg in provided_kwargs and kwarg not in NEVER_AUTO_PROMOTE:
-            options[kwarg] = optimizer_kwargs.pop(kwarg)
-
-    optimizer_kwargs["options"] = options
-    return optimizer_kwargs
-
-
-def kwargs_to_jac_options(optimizer_kwargs: dict, method: root_method) -> dict:
-    provided_kwargs = list(optimizer_kwargs.keys())
-    method_jac_kwargs = get_option_kwargs(method).get("jac_options", None)
-
-    if method_jac_kwargs is None:
-        return optimizer_kwargs
-
-    optimizer_kwargs = deepcopy(optimizer_kwargs)
-
-    if "options" not in optimizer_kwargs:
-        optimizer_kwargs["options"] = {}
-
-    if (
-        any(kwarg in method_jac_kwargs for kwarg in provided_kwargs)
-        and "jac_options" not in optimizer_kwargs["options"]
-    ):
-        optimizer_kwargs["options"]["jac_options"] = {}
-
-    for kwarg in provided_kwargs:
-        if kwarg in method_jac_kwargs:
-            optimizer_kwargs["options"]["jac_options"][kwarg] = optimizer_kwargs.pop(kwarg)
-
-    return optimizer_kwargs
 
 
 class LRUCache1:

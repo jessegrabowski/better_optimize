@@ -21,11 +21,12 @@ from threadpoolctl import threadpool_limits
 
 from better_optimize.configuration import (
     MINIMIZE_CONFIGS_BY_LOWER_NAME,
+    ROOT_CONFIGS_BY_LOWER_NAME,
     BasinHoppingConfig,
     MinimizeConfig,
     OptimizerConfig,
+    RootConfig,
 )
-from better_optimize.constants import ROOT_MODE_KWARGS
 from better_optimize.utilities import ToggleableProgress
 from better_optimize.wrapper import build_progress_bar
 
@@ -309,6 +310,22 @@ def _uses_grad(method: str | OptimizerConfig) -> bool:
     return config_class is not None and config_class.uses_grad
 
 
+def _uses_jac(method: str | OptimizerConfig) -> bool:
+    """Whether the root finder a name or a configuration selects consumes a jacobian.
+
+    A name resolves to the configuration class, where the flag is a `ClassVar`, and
+    resolves without regard to case the way :func:`root` does.
+    """
+    if isinstance(method, RootConfig):
+        return method.uses_jac
+
+    config_class = (
+        ROOT_CONFIGS_BY_LOWER_NAME.get(method.lower()) if isinstance(method, str) else None
+    )
+
+    return config_class is not None and config_class.uses_jac
+
+
 class _MultiStart:
     """Implementation behind :func:`multistart`. Not part of the public API."""
 
@@ -442,8 +459,7 @@ class _MultiStart:
         method = self._solver_kwargs.get("method", "")
 
         if self._is_root:
-            mode_info = ROOT_MODE_KWARGS.get(method, {})
-            use_jac = mode_info.get("uses_jac", False) or "jac" in self._solver_kwargs
+            use_jac = _uses_jac(method) or "jac" in self._solver_kwargs
             use_rayleigh = False
         else:
             use_jac = _uses_grad(method) or "jac" in self._solver_kwargs

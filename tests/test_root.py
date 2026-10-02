@@ -12,6 +12,11 @@ from scipy.optimize import OptimizeResult
 from scipy.optimize import root as sp_root
 
 from better_optimize import StopOptimization
+from better_optimize.configuration import (
+    AndersonJacOptions,
+    BroydenJacOptions,
+    HybrConfig,
+)
 from better_optimize.constants import root_method
 from better_optimize.root import root
 from better_optimize.utilities import LRUCache1
@@ -198,12 +203,14 @@ def test_root_callback_early_stop_with_stopoptimization():
     "method, options",
     [
         ("krylov", {"disp": False}),
-        ("broyden2", {"disp": False, "max_rank": 50}),
-        ("anderson", {"disp": False, "M": 10}),
+        ("broyden2", {"disp": False, "jac_options": BroydenJacOptions(max_rank=50)}),
+        ("anderson", {"disp": False, "jac_options": AndersonJacOptions(M=10)}),
     ],
     ids=["krylov", "broyden2", "anderson"],
 )
 def test_large_root(method: root_method, options: dict):
+    """`max_rank` and `M` configure the jacobian, not the solver, so they travel in the
+    nested field rather than at the top level where scipy would drop them."""
     n = [75, 75]
     y = [1.0 / (n[0] - 1), 1.0 / (n[1] - 1)]
     bounds = [0, 0, 1, 0]
@@ -213,3 +220,38 @@ def test_large_root(method: root_method, options: dict):
     res = root(func3, x0, args=(y, bounds), method=method, maxiter=10000, **options)
 
     assert_allclose(res.fun, 0.0, atol=1e-5, rtol=1e-5)
+
+
+def test_a_jacobian_option_at_the_top_level_is_refused():
+    """scipy warns and drops it, and the old dispatch table listed it as a solver option,
+    so it never reached the jacobian at all."""
+    with pytest.raises(TypeError, match="max_rank"):
+        root(
+            partial(func, a=1, b=2),
+            np.array([0.1]),
+            method="broyden2",
+            max_rank=50,
+            progressbar=False,
+        )
+
+
+def test_a_root_configuration_runs_the_method_it_names():
+    from_config = root(
+        partial(func, a=1, b=2), np.array([0.1]), method=HybrConfig(xtol=1e-10), progressbar=False
+    )
+    from_name = root(
+        partial(func, a=1, b=2), np.array([0.1]), method="hybr", xtol=1e-10, progressbar=False
+    )
+
+    assert_allclose(from_config.x, from_name.x, rtol=0, atol=0)
+
+
+def test_a_configuration_cannot_be_combined_with_options():
+    with pytest.raises(TypeError, match="Got both a HybrConfig"):
+        root(
+            partial(func, a=1, b=2),
+            np.array([0.1]),
+            method=HybrConfig(),
+            xtol=1e-10,
+            progressbar=False,
+        )

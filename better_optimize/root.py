@@ -9,13 +9,11 @@ from rich.progress import Progress, TaskID
 from scipy.optimize import OptimizeResult
 from scipy.optimize import root as sp_root
 
+from better_optimize.configuration import RootConfig, root_config_from_kwargs
 from better_optimize.constants import ROOT_METHODS_WITHOUT_CALLBACK, root_method
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_root,
-    determine_maxiter,
-    kwargs_to_jac_options,
-    kwargs_to_options,
     validate_provided_functions_root,
 )
 from better_optimize.wrapper import (
@@ -30,7 +28,7 @@ _log = logging.getLogger(__name__)
 def root(
     f: Callable[..., np.ndarray | tuple[np.ndarray, np.ndarray]],
     x0: np.ndarray,
-    method: root_method,
+    method: root_method | RootConfig,
     jac: Callable[..., np.ndarray] | None = None,
     progressbar: bool | Progress = True,
     progress_task: TaskID | None = None,
@@ -81,17 +79,15 @@ def root(
         Optimization result
 
     """
+    n_vars = len(x0)
+    config = root_config_from_kwargs(method, optimizer_kwargs)
+
     has_fused_f_and_grad = check_f_is_fused_root(f, x0, args)
-    validate_provided_functions_root(method, f, jac, has_fused_f_and_grad, verbose=verbose)
+    has_jac = validate_provided_functions_root(config, jac, has_fused_f_and_grad, verbose=verbose)
 
     f_cached = LRUCache1(f, f_returns_list=has_fused_f_and_grad, copy_x=True, dtype=x0.dtype)
 
-    options = optimizer_kwargs.pop("options", {})
-    optimizer_kwargs["options"] = options
-    optimizer_kwargs = kwargs_to_options(optimizer_kwargs, method)
-    optimizer_kwargs = kwargs_to_jac_options(optimizer_kwargs, method)
-
-    maxiter, optimizer_kwargs = determine_maxiter(optimizer_kwargs, method, len(x0))
+    maxiter = config.evaluation_budget(n_vars)
 
     objective = ObjectiveWrapper(
         maxeval=maxiter,
@@ -105,9 +101,10 @@ def root(
         task=progress_task,
     )
 
-    if callback is not None and method in ROOT_METHODS_WITHOUT_CALLBACK:
+    if callback is not None and config.method_name in ROOT_METHODS_WITHOUT_CALLBACK:
         _log.warning(
-            f"Method {method} does not support callbacks; the provided callback will be ignored."
+            f"Method {config.method_name} does not support callbacks; the provided callback "
+            "will be ignored."
         )
         callback = None
 
@@ -123,10 +120,10 @@ def root(
         sp_root,
         fun=objective,
         x0=x0,
-        method=method,
-        jac=True if has_fused_f_and_grad or jac is not None else None,
+        method=config.method_name,
+        jac=True if has_jac else None,
         callback=root_callback,
-        **optimizer_kwargs,
+        options=config.optimizer_kwargs(n=n_vars),
     )
 
     optimizer_result = optimizer_early_stopping_wrapper(f_optim)
