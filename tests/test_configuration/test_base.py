@@ -2,12 +2,14 @@ from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, dataclass
 from typing import ClassVar
 
+import numpy as np
 import pytest
 
 from better_optimize.configuration.base import (
     UNSET,
     MinimizeConfig,
     OptimizerConfig,
+    SolverProblem,
 )
 
 
@@ -195,3 +197,27 @@ def test_shaping_a_call_without_naming_a_solver_is_rejected():
             @property
             def method_name(self) -> str:
                 return "shapes-only"
+
+
+def test_a_solver_problem_compares_by_identity():
+    """It carries `x0`, so value equality would raise on the ambiguous truth of an array,
+    the same reason a configuration has none."""
+    arguments = dict(
+        f=print,
+        x0=np.zeros(3),
+        jac=None,
+        hess=None,
+        hessp=None,
+        args=(),
+        callback=None,
+        progressbar=False,
+        progress_task=None,
+        progressbar_update_interval=1,
+        verbose=False,
+        solver_kwargs={},
+    )
+    problem = SolverProblem(**arguments)
+
+    assert problem == problem
+    assert problem != SolverProblem(**arguments)
+    assert isinstance(hash(problem), int)

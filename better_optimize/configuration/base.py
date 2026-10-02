@@ -33,7 +33,7 @@ class _Unset:
 UNSET: Any = _Unset()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class SolverProblem:
     """What :func:`minimize` was handed, for a configuration that shapes it into the call
     another entry point expects.
