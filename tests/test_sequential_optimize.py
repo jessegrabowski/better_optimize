@@ -4,11 +4,12 @@ import pytest
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import minimize, sequential_optimize
-from better_optimize.sequential_optimize import (
-    SequentialResult,
-    _classify,
-    _validate_stages,
+from better_optimize.configuration import (
+    BasinHoppingConfig,
+    LBFGSBConfig,
+    NelderMeadConfig,
 )
+from better_optimize.sequential_optimize import SequentialResult, _classify
 from better_optimize.utilities import LRUCache1
 
 
@@ -408,9 +409,11 @@ def test_classify_helper_direct():
     assert _classify(res_regress, best_fun=1.0, f_cached=f_cached) == "soft"
 
 
-def test_validate_stages_rejects_non_dict():
-    with pytest.raises(TypeError, match="expected dict"):
-        _validate_stages([("not", "a", "dict")], x0=None)
+def test_a_stage_that_is_neither_a_config_nor_a_dict_is_rejected():
+    with pytest.raises(TypeError, match="stage 0: expected a configuration or a dict"):
+        sequential_optimize(
+            rosen, np.array([1.0, 1.0]), stages=[("not", "a", "dict")], progressbar=False
+        )
 
 
 def test_result_is_sequential_result_with_properties():
@@ -442,3 +445,52 @@ def test_to_dataframe_shape():
         df.columns
     )
     assert df["best_stage"].sum() == 1
+
+
+def test_a_config_stage_runs_without_naming_a_solver():
+    """A configuration already says which solver runs it, so the stage needs no callable."""
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[NelderMeadConfig(maxiter=300), LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["nelder-mead", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_a_global_optimizer_config_is_a_stage_like_any_other():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[BasinHoppingConfig(niter=2, rng=0), LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["basinhopping", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_config_and_dict_stages_mix_in_one_chain():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[{"solver": minimize, "method": "nelder-mead", "name": "coarse"}, LBFGSBConfig()],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["coarse", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
+
+
+def test_a_dict_stage_naming_a_method_needs_no_solver():
+    result = sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[{"method": "nelder-mead", "maxiter": 300}, {"method": "L-BFGS-B"}],
+        progressbar=False,
+    )
+
+    assert [stage.solver_name for stage in result.stage_results] == ["nelder-mead", "L-BFGS-B"]
+    assert result.best.fun < 1e-8
