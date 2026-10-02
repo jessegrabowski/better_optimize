@@ -83,6 +83,8 @@ class ObjectiveWrapper:
         progressbar_update_interval: int = 1,
         root=False,
         task: TaskID | None = None,
+        solver_uses_grad: bool = True,
+        solver_uses_hess: bool = True,
     ):
         self.n_eval = 0
         self.maxeval = maxeval
@@ -93,6 +95,12 @@ class ObjectiveWrapper:
         self.use_hessp = False
         self.has_fused_f_and_grad = has_fused_f_and_grad
         self.root = root
+
+        # A derivative the method cannot consume is still evaluated, for the norm the
+        # progress bar reports, and left out of what this returns. The driver then has
+        # nothing to pass scipy, which would otherwise warn about it a second time.
+        self.solver_uses_grad = solver_uses_grad
+        self.solver_uses_hess = solver_uses_hess
 
         self.progress = None
         self.task = task
@@ -153,9 +161,9 @@ class ObjectiveWrapper:
 
         self.n_eval += 1
 
-        if self.use_hess:
+        if self.use_hess and self.solver_uses_hess:
             return value, grad, hess
-        elif self.use_jac:
+        elif self.use_jac and self.solver_uses_grad:
             return value, grad
         else:
             return value
