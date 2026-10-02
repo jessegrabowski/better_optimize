@@ -5,7 +5,14 @@ from typing import Any, ClassVar, get_origin
 
 import numpy as np
 
-__all__ = ["UNSET", "FiniteDiffStep", "MinimizeConfig", "SQRT_EPS", "Workers"]
+__all__ = [
+    "UNSET",
+    "FiniteDiffStep",
+    "MinimizeConfig",
+    "OptimizerConfig",
+    "SQRT_EPS",
+    "Workers",
+]
 
 SQRT_EPS = float(np.sqrt(np.finfo(np.float64).eps))
 
@@ -24,13 +31,18 @@ UNSET: Any = _Unset()
 
 
 @dataclass(frozen=True, eq=False)
-class MinimizeConfig(ABC):
-    """One scipy ``minimize`` method, its options, and what it needs from the objective.
+class OptimizerConfig(ABC):
+    """One solver, and the options it accepts.
 
-    Each subclass declares one field per option the method accepts, named and typed as
+    Each subclass declares one field per option the solver accepts, named and typed as
     scipy's own signature has them. The fields are therefore the complete and authoritative
     option list: passing anything else raises ``TypeError`` rather than the
     ``OptimizeWarning`` scipy would emit and drop.
+
+    :class:`MinimizeConfig` adds the flags saying which derivatives a scipy ``minimize``
+    method uses. The global optimizers subclass this one instead, because neither has an
+    answer of its own. Differential evolution uses no derivatives, and a basinhopping run
+    uses whatever the minimizer it composes uses.
 
     An option the caller leaves unset is omitted from :meth:`optimizer_kwargs` rather than
     sent, so scipy applies its own default and a config never names an option the installed
@@ -55,10 +67,6 @@ class MinimizeConfig(ABC):
 
     tol: float | None = None
 
-    uses_grad: ClassVar[bool]
-    uses_hess: ClassVar[bool]
-    uses_hessp: ClassVar[bool]
-
     _excluded: ClassVar[frozenset[str]] = frozenset({"tol"})
     """Fields that are not options of the method."""
 
@@ -69,26 +77,23 @@ class MinimizeConfig(ABC):
     _evaluation_options: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # An abstract intermediate declares only part of the contract, leaving the rest to
+        # the concrete subclasses, so there is nothing to check yet.
+        if not getattr(cls.method_name, "__isabstractmethod__", False):
+            cls._check_declarations()
+
+    @classmethod
+    def _check_declarations(cls) -> None:
         """Check a concrete subclass's declarations against its fields, at import time.
 
         Raises
         ------
         TypeError
-            If a capability flag is neither a bool nor a property, an option group names
-            something that is not a field, or a field defaults to `UNSET` without
-            appearing in ``_tol_options``.
+            If an option group names something that is not a field, or a field defaults to
+            `UNSET` without appearing in ``_tol_options``.
         """
-        super().__init_subclass__(**kwargs)
-
-        if getattr(cls.method_name, "__isabstractmethod__", False):
-            return
-
-        # A config composing another delegates its capabilities, so a property declares
-        # them just as a ClassVar does.
-        for flag in ("uses_grad", "uses_hess", "uses_hessp"):
-            if not isinstance(getattr(cls, flag, None), bool | property):
-                raise TypeError(f"{cls.__name__} must set {flag}")
-
         declared = cls._declared_fields()
         for group in ("_excluded", "_tol_options", "_iteration_options", "_evaluation_options"):
             unknown = set(getattr(cls, group)) - declared
@@ -189,3 +194,31 @@ class MinimizeConfig(ABC):
     @staticmethod
     def _copy_if_array(value: Any) -> Any:
         return value.copy() if isinstance(value, np.ndarray) else value
+
+
+@dataclass(frozen=True, eq=False)
+class MinimizeConfig(OptimizerConfig, ABC):
+    """One scipy ``minimize`` method, and what it needs from the objective.
+
+    The three capability flags are what :func:`validate_provided_functions_minimize`
+    reconciles a caller's `jac`, `hess` and `hessp` against.
+    """
+
+    uses_grad: ClassVar[bool]
+    uses_hess: ClassVar[bool]
+    uses_hessp: ClassVar[bool]
+
+    @classmethod
+    def _check_declarations(cls) -> None:
+        """Also check that the subclass declares its derivative appetite.
+
+        Raises
+        ------
+        TypeError
+            If a capability flag is unset.
+        """
+        super()._check_declarations()
+
+        for flag in ("uses_grad", "uses_hess", "uses_hessp"):
+            if not isinstance(getattr(cls, flag, None), bool):
+                raise TypeError(f"{cls.__name__} must set {flag}")

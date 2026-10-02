@@ -4,7 +4,7 @@ from typing import ClassVar
 
 import pytest
 
-from better_optimize.configuration.base import UNSET, MinimizeConfig
+from better_optimize.configuration.base import UNSET, MinimizeConfig, OptimizerConfig
 
 
 @dataclass(frozen=True, eq=False)
@@ -101,6 +101,21 @@ def test_a_subclass_must_set_every_capability_flag():
             @property
             def method_name(self) -> str:
                 return "missing-flag"
+
+
+def test_a_config_that_is_not_a_minimize_method_needs_no_capability_flags():
+    """A global optimizer has no derivative appetite of its own, so it subclasses the base
+    that does not ask for one."""
+
+    @dataclass(frozen=True, eq=False)
+    class Flagless(OptimizerConfig):
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+        @property
+        def method_name(self) -> str:
+            return "flagless"
+
+    assert Flagless().optimizer_kwargs() == {}
 
 
 def test_an_option_group_may_only_name_declared_fields():

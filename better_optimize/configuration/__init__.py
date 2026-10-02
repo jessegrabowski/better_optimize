@@ -1,4 +1,4 @@
-from better_optimize.configuration.base import MinimizeConfig
+from better_optimize.configuration.base import MinimizeConfig, OptimizerConfig
 from better_optimize.configuration.first_order import (
     BFGSConfig,
     CGConfig,
@@ -41,6 +41,7 @@ __all__ = [
     "DoglegConfig",
     "LBFGSBConfig",
     "MinimizeConfig",
+    "OptimizerConfig",
     "NelderMeadConfig",
     "NewtonCGConfig",
     "PowellConfig",

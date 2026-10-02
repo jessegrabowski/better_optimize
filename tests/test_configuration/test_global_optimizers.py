@@ -13,8 +13,6 @@ from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
     LBFGSBConfig,
-    NelderMeadConfig,
-    NewtonCGConfig,
     TrustNCGConfig,
 )
 
@@ -64,27 +62,6 @@ def test_the_defaults_are_the_solvers_own(config_class, solver):
 
 
 X0 = np.array([-1.2, 1.0])
-
-
-@pytest.mark.parametrize(
-    "minimizer_config, uses_grad, uses_hess, uses_hessp",
-    [
-        (NelderMeadConfig(), False, False, False),
-        (LBFGSBConfig(), True, False, False),
-        (NewtonCGConfig(), True, True, True),
-    ],
-    ids=["nelder-mead", "l-bfgs-b", "newton-cg"],
-)
-def test_the_inner_minimizer_decides_which_derivatives_are_used(
-    minimizer_config, uses_grad, uses_hess, uses_hessp
-):
-    config = BasinHoppingConfig(minimizer_config=minimizer_config)
-
-    assert (config.uses_grad, config.uses_hess, config.uses_hessp) == (
-        uses_grad,
-        uses_hess,
-        uses_hessp,
-    )
 
 
 def test_the_inner_config_is_not_emitted_as_an_option():

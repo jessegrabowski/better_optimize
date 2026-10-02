@@ -19,7 +19,12 @@ from scipy.optimize import OptimizeResult
 from scipy.stats import qmc
 from threadpoolctl import threadpool_limits
 
-from better_optimize.configuration import MINIMIZE_CONFIGS, MinimizeConfig
+from better_optimize.configuration import (
+    MINIMIZE_CONFIGS,
+    BasinHoppingConfig,
+    MinimizeConfig,
+    OptimizerConfig,
+)
 from better_optimize.constants import ROOT_MODE_KWARGS
 from better_optimize.utilities import ToggleableProgress
 from better_optimize.wrapper import build_progress_bar
@@ -285,6 +290,23 @@ class MultiStartResult:
         )
 
 
+def _uses_grad(method: str | OptimizerConfig) -> bool:
+    """Whether the solver a name or a configuration selects consumes a gradient.
+
+    A basinhopping run consumes whatever the minimizer it composes does. Differential
+    evolution consumes none. A name resolves to the configuration class, where the flag
+    is a `ClassVar`.
+    """
+    if isinstance(method, BasinHoppingConfig):
+        return method.minimizer_config.uses_grad
+    if isinstance(method, MinimizeConfig):
+        return method.uses_grad
+
+    config_class = MINIMIZE_CONFIGS.get(method) if isinstance(method, str) else None
+
+    return config_class is not None and config_class.uses_grad
+
+
 class _MultiStart:
     """Implementation behind :func:`multistart`. Not part of the public API."""
 
@@ -422,9 +444,7 @@ class _MultiStart:
             use_jac = mode_info.get("uses_jac", False) or "jac" in self._solver_kwargs
             use_rayleigh = False
         else:
-            config = method if isinstance(method, MinimizeConfig) else MINIMIZE_CONFIGS.get(method)
-            uses_grad = config is not None and config.uses_grad
-            use_jac = uses_grad or "jac" in self._solver_kwargs
+            use_jac = _uses_grad(method) or "jac" in self._solver_kwargs
             has_hess = "hess" in self._solver_kwargs or "hessp" in self._solver_kwargs
             use_rayleigh = use_jac and has_hess
 

@@ -12,7 +12,13 @@ import pytest
 from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult
 
-from better_optimize.configuration import BFGSConfig, NelderMeadConfig
+from better_optimize.configuration import (
+    BasinHoppingConfig,
+    BFGSConfig,
+    DifferentialEvolutionConfig,
+    LBFGSBConfig,
+    NelderMeadConfig,
+)
 from better_optimize.minimize import minimize
 from better_optimize.multi_optimize import (
     MultiStartResult,
@@ -480,11 +486,23 @@ def test_multistart_survives_crashing_solver():
         (BFGSConfig(), True),
         ("nelder-mead", False),
         (NelderMeadConfig(), False),
+        (BasinHoppingConfig(minimizer_config=LBFGSBConfig()), True),
+        (BasinHoppingConfig(minimizer_config=NelderMeadConfig()), False),
+        (DifferentialEvolutionConfig(), False),
     ],
-    ids=["string-grad", "config-grad", "string-no-grad", "config-no-grad"],
+    ids=[
+        "string-grad",
+        "config-grad",
+        "string-no-grad",
+        "config-no-grad",
+        "basinhopping-grad",
+        "basinhopping-no-grad",
+        "differential-evolution",
+    ],
 )
 def test_the_gradient_column_follows_the_method_either_way(method, expected):
-    """A configuration carries the same capability the method name does."""
+    """A configuration carries the same capability the method name does. A basinhopping
+    run carries its inner minimizer's, and differential evolution carries none."""
     runner = _MultiStart(
         solver=minimize, x0=[np.zeros(1)], solver_kwargs={"method": method}, progressbar=False
     )

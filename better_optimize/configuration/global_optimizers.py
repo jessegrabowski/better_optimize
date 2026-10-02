@@ -4,7 +4,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from better_optimize.configuration.base import UNSET, MinimizeConfig
+from better_optimize.configuration.base import UNSET, MinimizeConfig, OptimizerConfig
 from better_optimize.configuration.first_order import LBFGSBConfig
 
 __all__ = ["BasinHoppingConfig", "DifferentialEvolutionConfig"]
@@ -31,11 +31,11 @@ DE_INIT_OPTIONS = ("sobol", "halton", "latinhypercube", "random")
 
 
 @dataclass(frozen=True, eq=False)
-class BasinHoppingConfig(MinimizeConfig):
+class BasinHoppingConfig(OptimizerConfig):
     """Basin hopping, which restarts a local minimizer from perturbed points.
 
-    The inner minimizer is a configuration of its own, and this one reports whatever
-    derivatives that minimizer needs.
+    The inner minimizer is a configuration of its own, and it is the one that says which
+    derivatives the run needs.
 
     Parameters
     ----------
@@ -99,18 +99,6 @@ class BasinHoppingConfig(MinimizeConfig):
     def method_name(self) -> str:
         return "basinhopping"
 
-    @property
-    def uses_grad(self) -> bool:
-        return self.minimizer_config.uses_grad
-
-    @property
-    def uses_hess(self) -> bool:
-        return self.minimizer_config.uses_hess
-
-    @property
-    def uses_hessp(self) -> bool:
-        return self.minimizer_config.uses_hessp
-
     def default_budget(self, n: int) -> int:
         return 100
 
@@ -121,7 +109,7 @@ class BasinHoppingConfig(MinimizeConfig):
 
 
 @dataclass(frozen=True, eq=False)
-class DifferentialEvolutionConfig(MinimizeConfig):
+class DifferentialEvolutionConfig(OptimizerConfig):
     """Differential evolution, a population-based global search over a bounded region.
 
     It uses no derivative information, and `bounds` is required rather than optional.
@@ -186,10 +174,6 @@ class DifferentialEvolutionConfig(MinimizeConfig):
     workers: int | Callable[..., Any] = 1
     integrality: Sequence[bool] | np.ndarray | None = None
     vectorized: bool = False
-
-    uses_grad: ClassVar[bool] = False
-    uses_hess: ClassVar[bool] = False
-    uses_hessp: ClassVar[bool] = False
 
     _excluded: ClassVar[frozenset[str]] = frozenset()
     _tol_options: ClassVar[Mapping[str, float]] = {"tol": 0.01}

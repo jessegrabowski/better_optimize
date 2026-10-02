@@ -1,6 +1,6 @@
 from typing import Any, Literal, overload
 
-from better_optimize.configuration.base import MinimizeConfig
+from better_optimize.configuration.base import MinimizeConfig, OptimizerConfig
 from better_optimize.configuration.first_order import (
     BFGSConfig,
     CGConfig,
@@ -136,20 +136,20 @@ rather than the method, so they never belong to a config."""
 
 
 def config_from_kwargs(
-    method: minimize_method | MinimizeConfig, kwargs: dict[str, Any]
-) -> tuple[MinimizeConfig, dict[str, Any]]:
+    method: minimize_method | OptimizerConfig, kwargs: dict[str, Any]
+) -> tuple[OptimizerConfig, dict[str, Any]]:
     """Resolve what the flat API was given into a config and scipy's remaining arguments.
 
     Parameters
     ----------
-    method : str or MinimizeConfig
+    method : str or OptimizerConfig
         A method name, or a configuration to use as given.
     kwargs : dict
         Everything the caller passed beside the problem and the reporting settings.
 
     Returns
     -------
-    config : MinimizeConfig
+    config : OptimizerConfig
         The configuration for the method.
     solver_kwargs : dict
         The arguments scipy takes beside its options dictionary.
@@ -165,7 +165,7 @@ def config_from_kwargs(
     kwargs = dict(kwargs)
     solver_kwargs = {name: kwargs.pop(name) for name in SOLVER_ARGUMENTS & kwargs.keys()}
 
-    if isinstance(method, MinimizeConfig):
+    if isinstance(method, OptimizerConfig):
         if kwargs:
             raise TypeError(
                 f"Got both a {type(method).__name__} and the option(s) "
