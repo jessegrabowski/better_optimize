@@ -1,4 +1,9 @@
-from better_optimize.configuration.base import MinimizeConfig, OptimizerConfig, SolverProblem
+from better_optimize.configuration.base import (
+    MinimizeConfig,
+    OptimizerConfig,
+    RootConfig,
+    SolverProblem,
+)
 from better_optimize.configuration.first_order import (
     BFGSConfig,
     CGConfig,
@@ -44,6 +49,7 @@ __all__ = [
     "LBFGSBConfig",
     "MinimizeConfig",
     "OptimizerConfig",
+    "RootConfig",
     "SolverProblem",
     "NelderMeadConfig",
     "NewtonCGConfig",

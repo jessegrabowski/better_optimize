@@ -12,6 +12,7 @@ __all__ = [
     "FiniteDiffStep",
     "MinimizeConfig",
     "OptimizerConfig",
+    "RootConfig",
     "SolverProblem",
     "SQRT_EPS",
     "Workers",
@@ -293,3 +294,39 @@ class MinimizeConfig(OptimizerConfig, ABC):
         for flag in ("uses_grad", "uses_hess", "uses_hessp"):
             if not isinstance(getattr(cls, flag, None), bool):
                 raise TypeError(f"{cls.__name__} must set {flag}")
+
+
+@dataclass(frozen=True, eq=False)
+class RootConfig(OptimizerConfig, ABC):
+    """One scipy ``root`` method, and whether it consumes a jacobian.
+
+    `uses_jac` is what :func:`validate_provided_functions_root` reconciles a caller's `jac`
+    against. There is one flag rather than the three a minimize method declares, because no
+    root finder takes a Hessian.
+
+    Unlike the minimize family, the root methods do not share a budget rule. Each subclass
+    states its own, because scipy's differs by method and, for `hybr` and `lm`, by whether a
+    jacobian was supplied.
+    """
+
+    uses_jac: ClassVar[bool]
+
+    @classmethod
+    def _check_declarations(cls) -> None:
+        """Also check that the subclass declares whether it consumes a jacobian.
+
+        Raises
+        ------
+        TypeError
+            If `uses_jac` is unset.
+        """
+        super()._check_declarations()
+
+        if not isinstance(getattr(cls, "uses_jac", None), bool):
+            raise TypeError(f"{cls.__name__} must set uses_jac")
+
+        if cls.default_budget is OptimizerConfig.default_budget:
+            raise TypeError(
+                f"{cls.__name__} must state its own default_budget, because the root "
+                "methods share none and the inherited one is a minimize number"
+            )

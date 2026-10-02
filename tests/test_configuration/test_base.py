@@ -9,6 +9,7 @@ from better_optimize.configuration.base import (
     UNSET,
     MinimizeConfig,
     OptimizerConfig,
+    RootConfig,
     SolverProblem,
 )
 
@@ -221,3 +222,52 @@ def test_a_solver_problem_compares_by_identity():
     assert problem == problem
     assert problem != SolverProblem(**arguments)
     assert isinstance(hash(problem), int)
+
+
+@dataclass(frozen=True, eq=False)
+class StubRootConfig(RootConfig):
+    """Minimal concrete root subclass, so the base's own behavior can be tested directly."""
+
+    xtol: float = UNSET
+    maxfev: int | None = None
+
+    uses_jac: ClassVar[bool] = True
+
+    _tol_options: ClassVar[Mapping[str, float]] = {"xtol": 1.49012e-08}
+    _iteration_options: ClassVar[tuple[str, ...]] = ()
+    _evaluation_options: ClassVar[tuple[str, ...]] = ("maxfev",)
+
+    @property
+    def method_name(self) -> str:
+        return "stub-root"
+
+    def default_budget(self, n: int) -> int:
+        return 200 * (n + 1)
+
+
+def test_a_root_subclass_must_say_whether_it_consumes_a_jacobian():
+    with pytest.raises(TypeError, match="must set uses_jac"):
+
+        @dataclass(frozen=True, eq=False)
+        class NoFlag(RootConfig):
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            @property
+            def method_name(self) -> str:
+                return "no-flag"
+
+
+def test_a_root_config_is_not_a_minimize_config():
+    """A root finder consumes at most a jacobian, so the two share the option machinery and
+    nothing else. Which base a configuration has is what the drivers route on."""
+    assert issubclass(StubRootConfig, OptimizerConfig)
+    assert not issubclass(StubRootConfig, MinimizeConfig)
+    assert StubRootConfig().uses_jac
+
+
+def test_a_root_config_gets_the_shared_option_machinery():
+    config = StubRootConfig()
+
+    assert config.optimizer_kwargs() == {"xtol": 1.49012e-08}
+    assert config.optimizer_kwargs(n=4)["maxfev"] == 1000
+    assert StubRootConfig(tol=1e-12).optimizer_kwargs()["xtol"] == 1e-12
