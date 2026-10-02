@@ -4,7 +4,11 @@ from typing import ClassVar
 
 import pytest
 
-from better_optimize.configuration.base import UNSET, MinimizeConfig, OptimizerConfig
+from better_optimize.configuration.base import (
+    UNSET,
+    MinimizeConfig,
+    OptimizerConfig,
+)
 
 
 @dataclass(frozen=True, eq=False)
@@ -150,3 +154,44 @@ def test_a_sentinel_default_must_be_listed_as_a_tolerance():
             @property
             def method_name(self) -> str:
                 return "leaked-sentinel"
+
+
+def test_a_config_minimize_runs_itself_has_no_solver_to_name():
+    """`solver_function` returning None is what tells `minimize` to run the config rather
+    than hand it on, and such a config never builds a call."""
+    assert StubConfig().solver_function() is None
+
+    with pytest.raises(NotImplementedError, match="names no solver function"):
+        StubConfig().build_solver_kwargs(problem=None)
+
+
+def test_naming_a_solver_without_shaping_its_call_is_rejected():
+    """The pair dispatches to a function with no arguments to give it."""
+    with pytest.raises(TypeError, match="overrides solver_function without build_solver_kwargs"):
+
+        @dataclass(frozen=True, eq=False)
+        class NamesOnly(OptimizerConfig):
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            def solver_function(self):
+                return print
+
+            @property
+            def method_name(self) -> str:
+                return "names-only"
+
+
+def test_shaping_a_call_without_naming_a_solver_is_rejected():
+    """The pair builds arguments nobody will ever pass."""
+    with pytest.raises(TypeError, match="overrides build_solver_kwargs without solver_function"):
+
+        @dataclass(frozen=True, eq=False)
+        class ShapesOnly(OptimizerConfig):
+            _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+            def build_solver_kwargs(self, problem):
+                return {}
+
+            @property
+            def method_name(self) -> str:
+                return "shapes-only"

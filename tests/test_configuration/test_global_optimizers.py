@@ -1,6 +1,7 @@
 import inspect
 
-from dataclasses import fields
+from dataclasses import dataclass, fields
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -13,6 +14,8 @@ from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
     LBFGSBConfig,
+    OptimizerConfig,
+    SolverProblem,
     TrustNCGConfig,
 )
 
@@ -216,3 +219,72 @@ def test_differential_evolution_rejects_an_update_interval():
             progressbar=False,
             progressbar_update_interval=5,
         )
+
+
+def a_problem(**overrides):
+    """What `minimize` hands a configuration that shapes its own call."""
+    defaults = dict(
+        f=rosen,
+        x0=X0,
+        jac=None,
+        hess=None,
+        hessp=None,
+        args=(),
+        callback=None,
+        progressbar=False,
+        progress_task=None,
+        progressbar_update_interval=1,
+        verbose=False,
+        solver_kwargs={},
+    )
+
+    return SolverProblem(**{**defaults, **overrides})
+
+
+@pytest.mark.parametrize("config_class, solver", CONFIGS, ids=IDS)
+def test_a_global_optimizer_names_the_function_that_runs_it(config_class, solver):
+    assert config_class().solver_function() is solver
+
+
+@pytest.mark.parametrize(
+    "config, problem",
+    [
+        (BasinHoppingConfig(), a_problem()),
+        (DifferentialEvolutionConfig(), a_problem(solver_kwargs={"bounds": BOUNDS})),
+    ],
+    ids=IDS,
+)
+def test_every_argument_built_is_one_the_solver_accepts(config, problem):
+    """A misspelled key would reach the solver as an unexpected keyword at run time."""
+    parameters = set(inspect.signature(config.solver_function()).parameters)
+
+    assert set(config.build_solver_kwargs(problem)) <= parameters
+
+
+def test_only_a_solver_searching_a_region_requires_bounds():
+    assert DifferentialEvolutionConfig().requires_bounds
+    assert not BasinHoppingConfig().requires_bounds
+    assert not LBFGSBConfig().requires_bounds
+
+
+def test_any_config_declaring_requires_bounds_is_refused_without_them():
+    """`minimize` reads the flag rather than naming differential evolution, so a solver
+    added later is held to the same requirement."""
+
+    @dataclass(frozen=True, eq=False)
+    class RegionSearch(OptimizerConfig):
+        _iteration_options: ClassVar[tuple[str, ...]] = ()
+        requires_bounds: ClassVar[bool] = True
+
+        @property
+        def method_name(self) -> str:
+            return "region-search"
+
+        def solver_function(self):
+            return print
+
+        def build_solver_kwargs(self, problem):
+            return {}
+
+    with pytest.raises(TypeError, match="region-search searches a bounded region"):
+        minimize(rosen, X0, method=RegionSearch(), progressbar=False)
