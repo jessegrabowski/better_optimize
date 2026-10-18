@@ -30,7 +30,7 @@ dependencies = [
   'scipy>=1.18',
   'rich',
   'threadpoolctl',
-  'joblib',
+  'joblib>=1.4',
   'pandas'
 ]
 
