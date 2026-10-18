@@ -48,6 +48,20 @@ def test_early_return_from_keyboard_interrupt(root, method):
         assert res["message"] == "`callback` raised `StopIteration`."
 
 
+def test_early_stop_reports_the_value_at_the_last_iterate():
+    # hybr never calls a callback, so maxeval stops it through the StopIteration branch.
+    objective = ObjectiveWrapper(f=lambda x: x**2 + 1.0, root=True, progressbar=False, maxeval=5)
+    f_optim = partial(scipy_root, fun=objective, x0=np.array([3.0, 4.0]), method="hybr")
+
+    result = optimizer_early_stopping_wrapper(f_optim)
+
+    assert (
+        result.message
+        == "`StopIteration` or `KeyboardInterrupt` raised -- optimization stopped prematurely."
+    )
+    np.testing.assert_allclose(result.fun, result.x**2 + 1.0)
+
+
 @pytest.mark.parametrize("root", [True, False], ids=["root", "minimize"])
 def test_exception_returns_failed_result(root, monkeypatch):
     """Exceptions raised inside the optimizer should be caught and returned as a failed result."""

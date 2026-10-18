@@ -126,6 +126,7 @@ class ObjectiveWrapper:
         self.n_iter = 0
 
         self.previous_x = None
+        self.previous_value = None
         if isinstance(progressbar, bool):
             self.progressbar = progressbar
             self.progress = self.initialize_progress_bar()
@@ -150,7 +151,9 @@ class ObjectiveWrapper:
             rayleigh = self._rayleigh_quotient(x, grad, hess)
 
         if np.all(np.isfinite(x)):
-            self.previous_x = x
+            # Some solvers (MINPACK) overwrite x in place after the call returns.
+            self.previous_x = np.copy(x)
+            self.previous_value = value
 
         if self.n_eval % self.update_every == 0:
             self.update_progressbar(value, grad, rayleigh)
@@ -352,7 +355,7 @@ def optimizer_early_stopping_wrapper(f_optim: partial):
             final_value = objective.previous_x
             res = OptimizeResult(
                 x=final_value,
-                fun=objective.previous_x,
+                fun=objective.previous_value,
                 success=False,
                 message="`StopIteration` or `KeyboardInterrupt` raised -- optimization stopped "
                 "prematurely.",
