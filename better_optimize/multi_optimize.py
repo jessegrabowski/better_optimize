@@ -23,9 +23,7 @@ from better_optimize.configuration import (
     MINIMIZE_CONFIGS_BY_LOWER_NAME,
     ROOT_CONFIGS_BY_LOWER_NAME,
     BasinHoppingConfig,
-    MinimizeConfig,
     OptimizerConfig,
-    RootConfig,
 )
 from better_optimize.exceptions import OptimizationInterrupted
 from better_optimize.utilities import ToggleableProgress, is_interrupt
@@ -302,14 +300,16 @@ class MultiStartResult:
 def _uses_grad(method: str | OptimizerConfig) -> bool:
     """Whether the solver a name or a configuration selects consumes a gradient.
 
-    A basinhopping run consumes whatever the minimizer it composes does. Differential
-    evolution consumes none. A name resolves to the configuration class, where the flag
-    is a `ClassVar`, and resolves without regard to case the way :func:`minimize` does.
+    A basinhopping run consumes whatever the minimizer it composes does. Any other
+    configuration answers with its own `uses_grad`. One that declares none, such as
+    differential evolution, consumes no gradient. A name resolves to the configuration class,
+    where the flag is a `ClassVar`, and resolves without regard to case the way
+    :func:`minimize` does.
     """
     if isinstance(method, BasinHoppingConfig):
         return method.minimizer_config.uses_grad
-    if isinstance(method, MinimizeConfig):
-        return method.uses_grad
+    if isinstance(method, OptimizerConfig):
+        return getattr(method, "uses_grad", False)
 
     config_class = (
         MINIMIZE_CONFIGS_BY_LOWER_NAME.get(method.lower()) if isinstance(method, str) else None
@@ -321,11 +321,12 @@ def _uses_grad(method: str | OptimizerConfig) -> bool:
 def _uses_jac(method: str | OptimizerConfig) -> bool:
     """Whether the root finder a name or a configuration selects consumes a jacobian.
 
-    A name resolves to the configuration class, where the flag is a `ClassVar`, and
+    A configuration answers with its own `uses_jac`. One that declares none consumes no
+    jacobian. A name resolves to the configuration class, where the flag is a `ClassVar`, and
     resolves without regard to case the way :func:`root` does.
     """
-    if isinstance(method, RootConfig):
-        return method.uses_jac
+    if isinstance(method, OptimizerConfig):
+        return getattr(method, "uses_jac", False)
 
     config_class = (
         ROOT_CONFIGS_BY_LOWER_NAME.get(method.lower()) if isinstance(method, str) else None
