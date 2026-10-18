@@ -214,6 +214,27 @@ result = minimize(
 The same callback works for `root` (`res.fun` is the residual vector), `basinhopping` (`res.accept`), and
 `differential_evolution` (`res.convergence`).
 
+### Interrupting a Run
+
+Ctrl-C raises `OptimizationInterrupted`, a subclass of `KeyboardInterrupt`, so it stops a loop that calls a solver.
+The partial result is on its `result` attribute, of the same type the solver returns: the last finite iterate for
+`minimize` and `root`, the best basin for `basinhopping`, the best point evaluated so far for `differential_evolution`,
+the finished stages for `sequential_optimize`, and the finished runs for `multi_optimize`. For the nested solvers, the
+inner solver's partial result is on `__cause__.result`. The objective is not called again after the interrupt, so a
+stalled objective does not stall the cleanup.
+
+```python
+from better_optimize import minimize, OptimizationInterrupted
+
+try:
+    result = minimize(rosenbrock, x0=np.array([-1.0, 2.0]), method="L-BFGS-B")
+except OptimizationInterrupted as interrupt:
+    result = interrupt.result
+```
+
+In IPython or Jupyter the `try` is unnecessary: after the traceback, the partial result is at
+`sys.last_value.result`.
+
 ### Triple-Fused Function using Pytensor
 
 ```python
