@@ -120,8 +120,6 @@ class BasinHoppingConfig(OptimizerConfig):
                 "progressbar_update_interval."
             )
 
-        # progress_task is not forwarded. A driver injects one unasked, and basinhopping
-        # supersedes it with the nested display it draws for its own two levels.
         return {
             "func": problem.f,
             "x0": problem.x0,
@@ -135,6 +133,7 @@ class BasinHoppingConfig(OptimizerConfig):
             },
             "callback": problem.callback,
             "progressbar": problem.progressbar,
+            "progress_task": problem.progress_task,
             "verbose": problem.verbose,
             **self.optimizer_kwargs(n=len(problem.x0)),
         }

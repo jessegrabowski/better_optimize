@@ -8,7 +8,12 @@ import pytest
 
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
-from better_optimize import OptimizationInterrupted, minimize, sequential_optimize
+from better_optimize import (
+    OptimizationInterrupted,
+    basinhopping,
+    minimize,
+    sequential_optimize,
+)
 from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
@@ -697,3 +702,14 @@ def test_an_interrupted_stage_with_a_better_partial_result_becomes_best():
     assert result.best_stage == 1
     assert result.fun == 2e-6
     assert "during stage 1" in result.message
+
+
+def test_a_basinhopping_stage_draws_nothing_when_the_progressbar_is_off(capfd):
+    sequential_optimize(
+        rosen,
+        np.array([-1.2, 1.0]),
+        stages=[{"solver": basinhopping, "niter": 2, "rng": 0}],
+        progressbar=False,
+    )
+
+    assert capfd.readouterr().err == ""
