@@ -13,6 +13,7 @@ from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import OptimizationInterrupted
+from better_optimize.basinhopping import basinhopping
 from better_optimize.configuration import (
     BasinHoppingConfig,
     BFGSConfig,
@@ -540,6 +541,37 @@ def test_the_gradient_column_follows_the_method_either_way(method, expected):
         runner._build_progress()
 
     assert build.call_args.kwargs["use_jac"] is expected
+
+
+@pytest.mark.parametrize("backend", ["sequential", "threading"])
+def test_basinhopping_runs_as_the_solver(backend):
+    result = multi_optimize(
+        solver=basinhopping,
+        x0=np.array([-1.2, 1.0]),
+        solver_kwargs={"func": rosen, "niter": 2, "rng": 0},
+        n_runs=2,
+        backend=backend,
+        n_jobs=2,
+        seed=0,
+        progressbar=False,
+    )
+
+    assert len(result.results) == 2
+    assert all(run.fun < 1e-8 for run in result.results)
+
+
+def test_a_basinhopping_config_draws_nothing_when_the_progressbar_is_off(capfd):
+    multi_optimize(
+        solver=minimize,
+        x0=np.array([-1.2, 1.0]),
+        solver_kwargs={"f": rosen, "method": BasinHoppingConfig(niter=2, rng=0)},
+        n_runs=2,
+        backend="sequential",
+        seed=0,
+        progressbar=False,
+    )
+
+    assert capfd.readouterr().err == ""
 
 
 @pytest.mark.parametrize(

@@ -1,8 +1,10 @@
 import importlib
+import io
 
 import numpy as np
 import pytest
 
+from rich.console import Console
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import OptimizationInterrupted, StopOptimization
@@ -481,3 +483,21 @@ def test_keyboard_interrupt_during_the_first_minimization_raises_with_its_partia
     assert not result.success
     assert result.nit == 0
     assert result.fun == func2d_nograd(result.x)
+
+
+def test_a_shared_progress_gets_one_row_that_counts_the_basins():
+    progress = ToggleableProgress(console=Console(file=io.StringIO()))
+    task = progress.add_task("run", total=None, f_value=0.0, grad_norm=0.0)
+
+    result = basinhopping(
+        rosen,
+        x0=np.array([-1.2, 1.0]),
+        niter=4,
+        rng=0,
+        progressbar=progress,
+        progress_task=task,
+    )
+
+    assert len(progress.tasks) == 1
+    assert progress.tasks[0].completed == result.nit
+    assert progress.tasks[0].fields["f_value"] == result.fun

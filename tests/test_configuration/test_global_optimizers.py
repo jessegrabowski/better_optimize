@@ -21,7 +21,15 @@ BOUNDS = [(-2.0, 2.0), (-2.0, 2.0)]
 
 # What each solver takes beside its options: the problem itself, and how to report on it.
 NOT_OPTIONS = {
-    basinhopping: {"func", "x0", "minimizer_kwargs", "callback", "progressbar", "verbose"},
+    basinhopping: {
+        "func",
+        "x0",
+        "minimizer_kwargs",
+        "callback",
+        "progressbar",
+        "progress_task",
+        "verbose",
+    },
     differential_evolution: {
         "f",
         "x0",
