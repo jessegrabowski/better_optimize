@@ -8,7 +8,7 @@ import pytest
 
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
-from better_optimize import minimize, sequential_optimize
+from better_optimize import OptimizationInterrupted, minimize, sequential_optimize
 from better_optimize.configuration import (
     BasinHoppingConfig,
     DifferentialEvolutionConfig,
@@ -644,3 +644,56 @@ def test_a_config_stage_is_labeled_by_its_method():
     )
 
     assert result.stage_results[0].solver_name == "differential_evolution"
+
+
+def test_keyboard_interrupt_stops_the_chain_and_keeps_finished_stages():
+    stages_run = []
+
+    def interrupting_solver(f, x0, **kwargs):
+        stages_run.append("interrupting")
+        raise KeyboardInterrupt
+
+    def later_solver(f, x0, **kwargs):
+        stages_run.append("later")
+        return OptimizeResult(x=x0, fun=f(x0)[0], success=True)
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        sequential_optimize(
+            _quadratic_fused,
+            x0=np.array([1.0, 1.0]),
+            stages=[
+                {"solver": minimize, "method": "L-BFGS-B", "jac": True, "progressbar": False},
+                {"solver": interrupting_solver},
+                {"solver": later_solver},
+            ],
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert stages_run == ["interrupting"]
+    assert not result.success
+    assert len(result.stage_results) == 2
+    assert result.best_stage == 0
+    assert result.fun < 1e-10
+
+
+def test_an_interrupted_stage_with_a_better_partial_result_becomes_best():
+    def interrupted_near_the_minimum(f, x0, **kwargs):
+        partial = OptimizeResult(x=np.array([1e-3, 1e-3]), fun=2e-6, success=False)
+        raise OptimizationInterrupted(partial, "stopped")
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        sequential_optimize(
+            _quadratic_fused,
+            x0=np.array([1.0, 1.0]),
+            stages=[
+                {"solver": minimize, "method": "nelder-mead", "maxiter": 5, "progressbar": False},
+                {"solver": interrupted_near_the_minimum},
+            ],
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert result.best_stage == 1
+    assert result.fun == 2e-6
+    assert "during stage 1" in result.message
