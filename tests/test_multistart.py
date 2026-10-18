@@ -4,6 +4,8 @@ import pickle
 import threading
 import time
 
+from dataclasses import dataclass
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -21,6 +23,7 @@ from better_optimize.configuration import (
     KrylovConfig,
     LBFGSBConfig,
     NelderMeadConfig,
+    OptimizerConfig,
 )
 from better_optimize.minimize import minimize
 from better_optimize.multi_optimize import (
@@ -590,3 +593,29 @@ def test_the_gradient_column_follows_the_root_method_either_way(method, expected
         runner._build_progress()
 
     assert build.call_args.kwargs["use_jac"] is expected
+
+
+@dataclass(frozen=True, eq=False)
+class ExternalSolverConfig(OptimizerConfig):
+    uses_grad: ClassVar[bool] = True
+    uses_jac: ClassVar[bool] = True
+    _iteration_options: ClassVar[tuple[str, ...]] = ()
+
+    @property
+    def method_name(self) -> str:
+        return "external-solver"
+
+
+@pytest.mark.parametrize("solver", [minimize, root], ids=["minimize", "root"])
+def test_the_gradient_column_follows_a_configuration_defined_outside_the_package(solver):
+    runner = _MultiStart(
+        solver=solver,
+        x0=[np.zeros(1)],
+        solver_kwargs={"method": ExternalSolverConfig()},
+        progressbar=False,
+    )
+
+    with patch("better_optimize.multi_optimize.build_progress_bar") as build:
+        runner._build_progress()
+
+    assert build.call_args.kwargs["use_jac"] is True
