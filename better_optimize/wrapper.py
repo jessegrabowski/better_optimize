@@ -20,7 +20,8 @@ from rich.table import Column
 from scipy.optimize import OptimizeResult
 
 from better_optimize.constants import CONSOLE_WIDTH
-from better_optimize.utilities import ToggleableProgress
+from better_optimize.exceptions import OptimizationInterrupted
+from better_optimize.utilities import ToggleableProgress, is_interrupt
 
 _log = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ class ObjectiveWrapper:
 
         self.previous_x = None
         self.previous_value = None
+        self.previous_grad = None
         if isinstance(progressbar, bool):
             self.progressbar = progressbar
             self.progress = self.initialize_progress_bar()
@@ -154,6 +156,7 @@ class ObjectiveWrapper:
             # Some solvers (MINPACK) overwrite x in place after the call returns.
             self.previous_x = np.copy(x)
             self.previous_value = value
+            self.previous_grad = grad
 
         if self.n_eval % self.update_every == 0:
             self.update_progressbar(value, grad, rayleigh)
@@ -195,7 +198,7 @@ class ObjectiveWrapper:
 
         try:
             return self.step(x)
-        except (KeyboardInterrupt, StopIteration):
+        except StopIteration:
             self.interrupted = True
             return self.step(x)
 
@@ -316,7 +319,7 @@ def _compose_callback(
 ) -> Callable:
     """Bundle the internal early-stop hook with an optional user-supplied callback.
 
-    The internal hook runs first, so ``maxeval`` and ``KeyboardInterrupt`` halting stays intact.
+    The internal hook runs first, so ``maxeval`` halting stays intact.
     The user callback then receives a uniform ``OptimizeResult`` built by ``result_builder`` from
     whatever SciPy passed. Its return value is ignored; it requests an early stop by raising
     :class:`~better_optimize.exceptions.StopOptimization` (or any ``StopIteration``).
@@ -341,6 +344,21 @@ def _compose_callback(
     return composite
 
 
+def _interrupted(objective: ObjectiveWrapper, x0: np.ndarray | None) -> OptimizationInterrupted:
+    """Package the last finite iterate the objective saw as the partial result of an interrupt."""
+    message = f"Interrupted by KeyboardInterrupt after {objective.n_eval} function evaluations."
+    result = OptimizeResult(
+        x=objective.previous_x if objective.previous_x is not None else x0,
+        fun=objective.previous_value if objective.previous_value is not None else np.inf,
+        success=False,
+        message=message,
+        nfev=objective.n_eval,
+    )
+    if objective.previous_grad is not None:
+        result.jac = objective.previous_grad
+    return OptimizationInterrupted(result, message)
+
+
 def optimizer_early_stopping_wrapper(f_optim: partial):
     objective = f_optim.keywords["fun"]
 
@@ -350,17 +368,19 @@ def optimizer_early_stopping_wrapper(f_optim: partial):
             # all arguments are pre-configured at this point.
             res = f_optim()
             final_value = res.x
-        except (KeyboardInterrupt, StopIteration):
-            # Teardown the progress bar if necessary, then forward the error
+        except StopIteration:
             final_value = objective.previous_x
             res = OptimizeResult(
                 x=final_value,
                 fun=objective.previous_value,
                 success=False,
-                message="`StopIteration` or `KeyboardInterrupt` raised -- optimization stopped "
-                "prematurely.",
+                message="`StopIteration` raised -- optimization stopped prematurely.",
             )
+        except KeyboardInterrupt as e:
+            raise _interrupted(objective, f_optim.keywords.get("x0")) from e
         except Exception as e:
+            if is_interrupt(e):
+                raise _interrupted(objective, f_optim.keywords.get("x0")) from e
             # Catch any runtime errors from the optimizer (e.g. nan/inf) and return a failed
             # result instead of crashing.
             _log.warning("Optimizer raised %s: %s", type(e).__name__, e)
