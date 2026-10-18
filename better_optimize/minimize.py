@@ -140,8 +140,14 @@ def minimize(
     solver_uses_hess = use_hess and config.uses_hess
     solver_uses_hessp = use_hessp and config.uses_hessp
 
+    evaluation_budget = config.evaluation_budget(n_vars)
+    if config.uses_grad and not solver_uses_grad:
+        # scipy estimates the gradient with n + 1 objective calls, which the wrapper counts and
+        # scipy's own evaluation caps do not.
+        evaluation_budget *= n_vars + 1
+
     objective = ObjectiveWrapper(
-        maxeval=config.evaluation_budget(n_vars),
+        maxeval=evaluation_budget,
         f=f_cached.value_and_grad if has_fused_f_and_grad else f_cached.value,
         jac=jac,
         hess=hess if use_hess else None,
