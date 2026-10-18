@@ -16,8 +16,14 @@ from scipy.optimize import OptimizeResult
 
 from better_optimize.configuration import OptimizerConfig, config_from_kwargs
 from better_optimize.constants import CONSOLE_WIDTH
+from better_optimize.exceptions import OptimizationInterrupted
 from better_optimize.minimize import minimize
-from better_optimize.utilities import LRUCache1, ToggleableProgress, check_f_is_fused_minimize
+from better_optimize.utilities import (
+    LRUCache1,
+    ToggleableProgress,
+    check_f_is_fused_minimize,
+    is_interrupt,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -328,8 +334,16 @@ def _validate_stages(
                 )
 
 
-def _classify(res: OptimizeResult, best_fun: float | None, f_cached: LRUCache1) -> str:
-    """Return 'hard', 'soft', or 'usable'."""
+def _classify(
+    res: OptimizeResult,
+    best_fun: float | None,
+    f_cached: LRUCache1,
+    recover_fun: bool = True,
+) -> str:
+    """Return 'hard', 'soft', or 'usable'.
+
+    A non-finite ``fun`` is recomputed from ``x`` unless ``recover_fun`` is False.
+    """
     if getattr(res, "_bo_crashed", False):
         return "hard"
 
@@ -344,6 +358,8 @@ def _classify(res: OptimizeResult, best_fun: float | None, f_cached: LRUCache1) 
         fun_val = float("nan")
 
     if not np.isfinite(fun_val):
+        if not recover_fun:
+            return "hard"
         try:
             recovered = float(f_cached.value(x))
         except Exception:
@@ -484,16 +500,22 @@ def sequential_optimize(
 
             try:
                 res = solver(**call_kwargs)
-            except KeyboardInterrupt:
-                res = OptimizeResult(
-                    x=_fallback_x(current_x),
-                    fun=float("inf"),
-                    success=False,
-                    message=f"stage {i} ({name}) interrupted by user",
-                )
-                res._bo_crashed = True
-                hard_failure_seen = True
-            except Exception as e:
+            except BaseException as e:
+                if is_interrupt(e):
+                    raise _interrupted_chain(
+                        e,
+                        stage_index=i,
+                        stage_name=name,
+                        stage_results=stage_results,
+                        best_res=best_res,
+                        best_stage=best_stage,
+                        best_fun=best_fun,
+                        hard_failure_seen=hard_failure_seen,
+                        current_x=current_x,
+                        f_cached=f_cached,
+                    ) from e
+                if not isinstance(e, Exception):
+                    raise
                 _log.warning(
                     "sequential_optimize: stage %d (%s) raised %s: %s",
                     i,
@@ -567,10 +589,30 @@ def sequential_optimize(
             if classification == "hard" and on_failure == "stop":
                 break
 
+    return _sequential_result(
+        stage_results=stage_results,
+        best_res=best_res,
+        best_stage=best_stage,
+        hard_failure_seen=hard_failure_seen,
+        current_x=current_x,
+        f_cached=f_cached,
+    )
+
+
+def _sequential_result(
+    stage_results: list[OptimizeResult],
+    best_res: OptimizeResult | None,
+    best_stage: int,
+    hard_failure_seen: bool,
+    current_x: np.ndarray | None,
+    f_cached: LRUCache1,
+    interrupted_stage: int | None = None,
+) -> SequentialResult:
+    interrupted = interrupted_stage is not None
     if best_res is None:
         final_x = _fallback_x(current_x)
         final_fun = float("inf")
-        if final_x.size > 0:
+        if final_x.size > 0 and not interrupted:
             try:
                 final_fun = float(f_cached.value(final_x))
             except Exception:
@@ -582,7 +624,7 @@ def sequential_optimize(
             message="no stage produced a usable result",
         )
 
-    success = (not hard_failure_seen) and best_stage >= 0
+    success = (not hard_failure_seen) and best_stage >= 0 and not interrupted
     total_nit = sum(int(getattr(r, "nit", 0) or 0) for r in stage_results)
     total_nfev = sum(int(getattr(r, "nfev", 0) or 0) for r in stage_results)
 
@@ -593,6 +635,8 @@ def sequential_optimize(
         msg_parts.append("no usable stage")
     if hard_failure_seen:
         msg_parts.append("hard failure(s) encountered")
+    if interrupted:
+        msg_parts.append(f"interrupted by KeyboardInterrupt during stage {interrupted_stage}")
 
     return SequentialResult(
         best=best_res,
@@ -603,6 +647,50 @@ def sequential_optimize(
         nit=total_nit,
         nfev=total_nfev,
     )
+
+
+def _interrupted_chain(
+    exc: BaseException,
+    stage_index: int,
+    stage_name: str,
+    stage_results: list[OptimizeResult],
+    best_res: OptimizeResult | None,
+    best_stage: int,
+    best_fun: float | None,
+    hard_failure_seen: bool,
+    current_x: np.ndarray | None,
+    f_cached: LRUCache1,
+) -> OptimizationInterrupted:
+    """Close out the chain at an interrupt without evaluating the objective again.
+
+    The interrupted stage's own partial result, when it raised one, competes for best like any
+    other stage, so the point it reached is not lost.
+    """
+    stage_res = getattr(exc, "result", None)
+    if stage_res is None:
+        stage_res = OptimizeResult(
+            x=_fallback_x(current_x),
+            fun=float("inf"),
+            success=False,
+            message=f"stage {stage_index} ({stage_name}) interrupted",
+        )
+    stage_res.solver_name = stage_name
+    stage_res.stage_index = stage_index
+    stage_res.classification = _classify(stage_res, best_fun, f_cached, recover_fun=False)
+
+    if stage_res.classification == "usable":
+        best_res, best_stage = stage_res, stage_index
+
+    result = _sequential_result(
+        stage_results=[*stage_results, stage_res],
+        best_res=best_res,
+        best_stage=best_stage,
+        hard_failure_seen=hard_failure_seen,
+        current_x=current_x,
+        f_cached=f_cached,
+        interrupted_stage=stage_index,
+    )
+    return OptimizationInterrupted(result, result.message)
 
 
 def _fallback_x(current_x: np.ndarray | None) -> np.ndarray:

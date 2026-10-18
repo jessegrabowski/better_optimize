@@ -12,6 +12,7 @@ import pytest
 from numpy.testing import assert_allclose
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
+from better_optimize import OptimizationInterrupted
 from better_optimize.configuration import (
     BasinHoppingConfig,
     BFGSConfig,
@@ -293,6 +294,30 @@ def test_run_single_catches_solver_exception():
     assert result.run_index == 3
     assert_allclose(result.x0, x0)
     assert_allclose(result.x, x0)
+
+
+@pytest.mark.parametrize("backend", ["sequential", "threading"])
+def test_keyboard_interrupt_raises_with_the_finished_runs(backend):
+    def f(x):
+        # Only the run started at 1.0 is interrupted, once it has stepped away from its x0.
+        if x[0] > 1.01:
+            raise KeyboardInterrupt
+        return float(np.sum(x**2))
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        multi_optimize(
+            minimize,
+            x0=[np.array([0.0]), np.array([1.0]), np.array([0.2])],
+            solver_kwargs={"f": f, "method": "nelder-mead"},
+            backend=backend,
+            n_jobs=1,
+            progressbar=False,
+        )
+
+    results = excinfo.value.result.results
+    assert [result.run_index for result in results] == [0, 1]
+    assert results[0].success
+    assert not results[1].success
 
 
 class TestMultiStartResult:

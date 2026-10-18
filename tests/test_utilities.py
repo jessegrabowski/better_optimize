@@ -11,6 +11,7 @@ from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
     check_f_is_fused_root,
+    is_interrupt,
     validate_provided_functions_minimize,
 )
 
@@ -244,3 +245,17 @@ class TestLRUCache1:
         x[0] = 100.0
         result2 = cache(np.array([1.0, 2.0], dtype=np.float64))
         assert np.allclose(result2[0], 3.0)
+
+
+def test_is_interrupt_finds_chained_interrupt():
+    try:
+        try:
+            raise KeyboardInterrupt
+        except KeyboardInterrupt as interrupt:
+            raise SystemError("compiled call failed") from interrupt
+    except SystemError as error:
+        assert is_interrupt(error)
+
+
+def test_is_interrupt_ignores_ordinary_errors():
+    assert not is_interrupt(SystemError("compiled call failed"))
