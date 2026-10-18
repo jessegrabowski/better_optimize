@@ -2,7 +2,7 @@ from typing import get_args
 
 import pytest
 
-from better_optimize import configuration
+from better_optimize import configuration, constants
 from better_optimize.configuration import (
     MINIMIZE_CONFIGS,
     ROOT_CONFIGS,
@@ -184,3 +184,88 @@ def test_a_top_level_maxiter_fills_whatever_a_root_method_calls_its_budget(metho
 
     assert budgets
     assert [getattr(config, name) for name in budgets] == [500] * len(budgets)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "MINIMIZE_MODE_KWARGS",
+        "ROOT_MODE_KWARGS",
+        "TOLERANCES",
+        "DE_STRATEGY_OPTIONS",
+        "DE_INIT_OPTIONS",
+    ],
+)
+def test_names_removed_in_0_4_3_warn_at_the_line_that_reads_them(name):
+    with pytest.warns(DeprecationWarning, match=name) as record:
+        getattr(constants, name)
+
+    assert record[0].filename == __file__
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("TOLERANCES", ["xtol", "ftol", "gtol", "fatol", "xatol"]),
+        ("DE_INIT_OPTIONS", ("sobol", "halton", "latinhypercube", "random")),
+        (
+            "DE_STRATEGY_OPTIONS",
+            (
+                "best1bin",
+                "best1exp",
+                "rand1bin",
+                "rand1exp",
+                "randtobest1bin",
+                "randtobest1exp",
+                "currenttobest1bin",
+                "currenttobest1exp",
+                "best2bin",
+                "best2exp",
+                "rand2bin",
+                "rand2exp",
+            ),
+        ),
+    ],
+)
+def test_restored_constants_keep_their_0_4_2_values(name, expected):
+    with pytest.warns(DeprecationWarning):
+        assert getattr(constants, name) == expected
+
+
+def test_deprecated_minimize_mode_kwargs_keep_the_0_4_2_derivative_flags():
+    with pytest.warns(DeprecationWarning):
+        mode_kwargs = constants.MINIMIZE_MODE_KWARGS
+
+    gradient_free = {"nelder-mead", "powell", "COBYLA", "COBYQA"}
+    uses_hess = {"Newton-CG", "trust-constr", "dogleg", "trust-ncg", "trust-exact", "trust-krylov"}
+    uses_hessp = {"Newton-CG", "trust-constr", "trust-ncg", "trust-krylov"}
+
+    assert set(mode_kwargs) == set(get_args(minimize_method))
+    assert {
+        method for method, entry in mode_kwargs.items() if not entry["uses_grad"]
+    } == gradient_free
+    assert {method for method, entry in mode_kwargs.items() if entry["uses_hess"]} == uses_hess
+    assert {method for method, entry in mode_kwargs.items() if entry["uses_hessp"]} == uses_hessp
+    assert mode_kwargs["L-BFGS-B"]["f_maxiter_default"](3) == 600
+    assert mode_kwargs["TNC"]["f_maxiter_default"](3) == 100
+    assert "maxcor" in mode_kwargs["L-BFGS-B"]["valid_options"]
+
+
+def test_deprecated_root_mode_kwargs_keep_the_0_4_2_jacobian_flags():
+    with pytest.warns(DeprecationWarning):
+        mode_kwargs = constants.ROOT_MODE_KWARGS
+
+    without_jac_options = {"hybr", "lm", "df-sane"}
+
+    assert set(mode_kwargs) == set(get_args(root_method))
+    assert {method for method, entry in mode_kwargs.items() if entry["uses_jac"]} == {"hybr", "lm"}
+    assert {method for method, entry in mode_kwargs.items() if "jac_options" not in entry} == (
+        without_jac_options
+    )
+    assert mode_kwargs["anderson"]["jac_options"] == ["alpha", "w0", "M"]
+    assert mode_kwargs["broyden1"]["f_maxiter_default"](3) == 400
+
+
+def test_unknown_constants_still_raise():
+    with pytest.raises(AttributeError, match="NOT_A_CONSTANT"):
+        constants.NOT_A_CONSTANT
