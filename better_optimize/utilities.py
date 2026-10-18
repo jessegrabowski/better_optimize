@@ -315,6 +315,23 @@ def check_f_is_fused_root(f, x0, args) -> bool:
     return ret_val
 
 
+def is_interrupt(exc: BaseException) -> bool:
+    """
+    Return True if a ``KeyboardInterrupt`` appears anywhere in the exception chain of ``exc``.
+
+    Compiled callables (e.g. Numba) can surface a Ctrl-C as a ``SystemError`` whose cause or
+    context is the original ``KeyboardInterrupt``, so checking the type of ``exc`` alone misses it.
+    """
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, KeyboardInterrupt):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class LRUCache1:
     """
     Simple LRU cache with a memory size of 1.
