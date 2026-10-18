@@ -6,6 +6,7 @@ import pytest
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
 from better_optimize import (
+    OptimizationInterrupted,
     StopOptimization,
     differential_evolution,
     minimize,
@@ -130,6 +131,7 @@ def test_de_callback_early_stop_with_stopoptimization():
         progressbar=False,
     )
     assert not res.success
+    assert res.fun == rosen(res.x)
 
 
 def test_de_callback_returning_data_does_not_stop():
@@ -243,3 +245,53 @@ def test_de_returns_optimize_result():
     )
     assert isinstance(res, OptimizeResult)
     assert hasattr(res, "x") and hasattr(res, "fun") and hasattr(res, "nit")
+
+
+def test_de_keyboard_interrupt_raises_with_the_best_member_so_far():
+    n_calls = 0
+
+    def f(x):
+        nonlocal n_calls
+        n_calls += 1
+        if n_calls == 300:
+            raise KeyboardInterrupt
+        return rosen(x)
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        differential_evolution(
+            f,
+            bounds=[(-5.0, 5.0), (-5.0, 5.0)],
+            maxiter=100,
+            rng=0,
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert not result.success
+    assert result.nit > 0
+    assert result.fun == rosen(result.x)
+
+
+def test_de_keyboard_interrupt_during_the_initial_population_raises_with_its_best_member():
+    n_calls = 0
+
+    def f(x):
+        nonlocal n_calls
+        n_calls += 1
+        if n_calls == 10:
+            raise KeyboardInterrupt
+        return rosen(x)
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        differential_evolution(
+            f,
+            bounds=[(-5.0, 5.0), (-5.0, 5.0)],
+            maxiter=100,
+            rng=0,
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert result.nit == 0
+    assert np.isfinite(result.fun)
+    assert result.fun == rosen(result.x)
