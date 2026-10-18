@@ -5,7 +5,7 @@ import pytest
 
 from scipy.optimize import OptimizeResult, rosen, rosen_der
 
-from better_optimize import StopOptimization
+from better_optimize import OptimizationInterrupted, StopOptimization
 from better_optimize.basinhopping import AllowFailureStorage, basinhopping
 from better_optimize.utilities import LRUCache1, ToggleableProgress
 
@@ -428,3 +428,56 @@ def test_basinhopping_accepts_a_separate_gradient():
     )
 
     assert result.fun < 1e-12
+
+
+def test_keyboard_interrupt_in_the_inner_minimizer_raises_with_the_best_basin():
+    n_calls = 0
+
+    def f(x):
+        nonlocal n_calls
+        n_calls += 1
+        if n_calls == 500:
+            raise KeyboardInterrupt
+        return func2d_nograd(x)
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        basinhopping(
+            f,
+            x0=np.array([0.5, 0.5]),
+            niter=1_000,
+            rng=0,
+            minimizer_kwargs={"method": "powell"},
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert not result.success
+    assert result.nit > 0
+    assert result.fun == func2d_nograd(result.x)
+    assert isinstance(excinfo.value.__cause__, OptimizationInterrupted)
+
+
+def test_keyboard_interrupt_during_the_first_minimization_raises_with_its_partial_result():
+    n_calls = 0
+
+    def f(x):
+        nonlocal n_calls
+        n_calls += 1
+        if n_calls == 10:
+            raise KeyboardInterrupt
+        return func2d_nograd(x)
+
+    with pytest.raises(OptimizationInterrupted) as excinfo:
+        basinhopping(
+            f,
+            x0=np.array([0.5, 0.5]),
+            niter=1_000,
+            rng=0,
+            minimizer_kwargs={"method": "powell"},
+            progressbar=False,
+        )
+
+    result = excinfo.value.result
+    assert not result.success
+    assert result.nit == 0
+    assert result.fun == func2d_nograd(result.x)

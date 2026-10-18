@@ -14,12 +14,38 @@ from scipy.optimize._basinhopping import (
 from better_optimize.basinhopping.progress import initialize_progress_bar
 from better_optimize.basinhopping.runner import AllowFailureBasinHoppingRunner
 from better_optimize.configuration import config_from_kwargs
+from better_optimize.exceptions import OptimizationInterrupted
 from better_optimize.minimize import minimize
 from better_optimize.utilities import (
     LRUCache1,
     check_f_is_fused_minimize,
     validate_provided_functions_minimize,
 )
+
+
+def _result_from_storage(
+    bh: AllowFailureBasinHoppingRunner, message: list[str], nit: int
+) -> OptimizeResult:
+    res = bh.res
+    res.lowest_optimization_result = bh.storage.get_lowest()
+    res.x = np.copy(res.lowest_optimization_result.x)
+    res.fun = res.lowest_optimization_result.fun
+    res.message = message
+    res.nit = nit
+    return res
+
+
+def _interrupted_before_first_basin(inner: OptimizationInterrupted) -> OptimizationInterrupted:
+    message = "Interrupted by KeyboardInterrupt during the first local minimization."
+    result = OptimizeResult(
+        x=inner.result.x,
+        fun=inner.result.fun,
+        success=False,
+        message=[message],
+        nit=0,
+        lowest_optimization_result=inner.result,
+    )
+    return OptimizationInterrupted(result, message)
 
 
 def basinhopping(
@@ -223,14 +249,17 @@ def basinhopping(
     if niter_success is None:
         niter_success = niter + 2
 
-    bh = AllowFailureBasinHoppingRunner(
-        x0,
-        wrapped_minimizer,
-        take_step_wrapped,
-        accept_tests,
-        accept_on_minimizer_fail=accept_on_minimizer_fail,
-        disp=verbose,
-    )
+    try:
+        bh = AllowFailureBasinHoppingRunner(
+            x0,
+            wrapped_minimizer,
+            take_step_wrapped,
+            accept_tests,
+            accept_on_minimizer_fail=accept_on_minimizer_fail,
+            disp=verbose,
+        )
+    except OptimizationInterrupted as e:
+        raise _interrupted_before_first_basin(e) from e
 
     # The wrapped minimizer is called once during construction of
     # BasinHoppingRunner, so run the callback
@@ -266,38 +295,48 @@ def basinhopping(
     )
 
     with progress:
-        for i in range(niter):
-            if early_stop:
-                break
-            if progressbar:
-                progress.reset(minimize_task, visible=True)
-            new_global_min = bh.one_cycle()
-            if new_global_min and progressbar:
-                grad_norm_at_min = progress.tasks[minimize_task].fields["grad_norm"]
-
-            progress.update(
-                bh_task,
-                advance=1,
-                step_size=take_step_wrapped.takestep.stepsize,
-                accept_rate=float(take_step_wrapped.naccept) / take_step_wrapped.nstep,
-                f_value=bh.storage.get_lowest().fun,
-                grad_norm=grad_norm_at_min,
-            )
-
-            if callable(callback):
-                res = OptimizeResult(x=bh.xtrial, fun=bh.energy_trial, nit=i + 1, accept=bh.accept)
-                try:
-                    callback(res)  # return ignored; raise StopOptimization to stop early
-                except StopIteration:
-                    message = ["callback requested early stop"]
+        try:
+            for i in range(niter):
+                if early_stop:
                     break
+                if progressbar:
+                    progress.reset(minimize_task, visible=True)
+                new_global_min = bh.one_cycle()
+                if new_global_min and progressbar:
+                    grad_norm_at_min = progress.tasks[minimize_task].fields["grad_norm"]
 
-            count += 1
-            if new_global_min:
-                count = 0
-            elif count > niter_success:
-                message = ["success condition satisfied"]
-                break
+                progress.update(
+                    bh_task,
+                    advance=1,
+                    step_size=take_step_wrapped.takestep.stepsize,
+                    accept_rate=float(take_step_wrapped.naccept) / take_step_wrapped.nstep,
+                    f_value=bh.storage.get_lowest().fun,
+                    grad_norm=grad_norm_at_min,
+                )
+
+                if callable(callback):
+                    res = OptimizeResult(
+                        x=bh.xtrial, fun=bh.energy_trial, nit=i + 1, accept=bh.accept
+                    )
+                    try:
+                        callback(res)  # return ignored; raise StopOptimization to stop early
+                    except StopIteration:
+                        message = ["callback requested early stop"]
+                        break
+
+                count += 1
+                if new_global_min:
+                    count = 0
+                elif count > niter_success:
+                    message = ["success condition satisfied"]
+                    break
+        except KeyboardInterrupt as e:
+            interrupt_message = (
+                f"Interrupted by KeyboardInterrupt after {i} basinhopping iterations."
+            )
+            result = _result_from_storage(bh, message=[interrupt_message], nit=i)
+            result.success = False
+            raise OptimizationInterrupted(result, interrupt_message) from e
 
     # Hack -- jupyter wants transient = True, or else a bunch of newlines get inserted. But when transient = True,
     # the progress disappears in the terminal. Setting False now makes both work.
@@ -313,13 +352,7 @@ def basinhopping(
             f_value=bh.storage.get_lowest().fun,
             grad_norm=grad_norm_at_min,
         )
-    # prepare return object
-    res = bh.res
-    res.lowest_optimization_result = bh.storage.get_lowest()
-    res.x = np.copy(res.lowest_optimization_result.x)
-    res.fun = res.lowest_optimization_result.fun
-    res.message = message
-    res.nit = i + 1
+    res = _result_from_storage(bh, message=message, nit=i + 1)
     res.success = res.lowest_optimization_result.success
 
     return res
