@@ -10,6 +10,7 @@ import pytest
 
 from numpy.testing import assert_allclose
 from scipy.optimize import Bounds, LinearConstraint, NonlinearConstraint, OptimizeResult
+from scipy.optimize import minimize as scipy_minimize
 from scipy.sparse.linalg import LinearOperator
 
 from better_optimize import StopOptimization
@@ -110,6 +111,18 @@ def test_rosen(method: minimize_method):
     assert isinstance(res, OptimizeResult)
     assert_allclose(res.x, np.ones(5), atol=1e-5, rtol=1e-5)
     assert_allclose(res.fun, 0.0, atol=1e-8, rtol=1e-8)
+
+
+@pytest.mark.parametrize("method", ["TNC", "SLSQP"])
+def test_an_estimated_gradient_converges_within_the_default_budget(method: minimize_method):
+    objective = partial(rosen, a=100, b=0)
+    x0 = np.array([-1.2, 1.0])
+
+    res = minimize(objective, x0, method=method, progressbar=False)
+    reference = scipy_minimize(objective, x0, method=method)
+
+    assert res.success
+    assert_allclose(res.fun, reference.fun)
 
 
 @pytest.mark.parametrize("method", no_grad_methods, ids=no_grad_methods)
